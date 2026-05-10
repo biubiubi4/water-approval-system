@@ -1,0 +1,140 @@
+package com.waterapproval.service;
+
+import com.waterapproval.dto.ApplicationResponse;
+import com.waterapproval.dto.CreateApplicationRequest;
+import com.waterapproval.dto.ReviewResponse;
+import com.waterapproval.entity.Application;
+import com.waterapproval.exception.ApplicationNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+@Service
+public class ApplicationService {
+
+    private final Map<Long, Application> store = new ConcurrentHashMap<>();
+    private final AtomicLong sequence = new AtomicLong(1);
+    private final AiReviewClient aiReviewClient;
+
+    public ApplicationService(AiReviewClient aiReviewClient) {
+        this.aiReviewClient = aiReviewClient;
+        seedData();
+    }
+
+    public List<ApplicationResponse> listApplications() {
+        return store.values().stream()
+                .sorted((left, right) -> right.getId().compareTo(left.getId()))
+                .map(this::toResponse)
+                .toList();
+    }
+
+    public ApplicationResponse getApplication(Long id) {
+        return toResponse(requireApplication(id));
+    }
+
+    public ApplicationResponse createApplication(CreateApplicationRequest request, List<MultipartFile> files) {
+        Application application = new Application();
+        application.setId(sequence.getAndIncrement());
+        application.setApplicantName(request.getApplicantName());
+        application.setApplicantId(request.getApplicantId());
+        application.setApplicationDate(LocalDateTime.now());
+        application.setStatus("PENDING");
+        application.setFiles(extractFileNames(files));
+        store.put(application.getId(), application);
+        return toResponse(application);
+    }
+
+    public ReviewResponse reviewApplication(Long id) {
+        Application application = requireApplication(id);
+        Map<String, Object> payload = buildPayload(application);
+        ReviewResponse response = aiReviewClient.review(payload);
+        application.setStatus(response.getStatus());
+        application.setReviewResult(JsonSupport.toJson(response));
+        return response;
+    }
+
+    private Application requireApplication(Long id) {
+        Application application = store.get(id);
+        if (application == null) {
+            throw new ApplicationNotFoundException(id);
+        }
+        return application;
+    }
+
+    private ApplicationResponse toResponse(Application application) {
+        ApplicationResponse response = new ApplicationResponse();
+        response.setId(application.getId());
+        response.setApplicantName(application.getApplicantName());
+        response.setApplicantId(application.getApplicantId());
+        response.setApplicationDate(application.getApplicationDate());
+        response.setStatus(application.getStatus());
+        response.setReviewResult(application.getReviewResult());
+        response.setFiles(application.getFiles());
+        return response;
+    }
+
+    private Map<String, Object> buildPayload(Application application) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("applicant_name", application.getApplicantName());
+        payload.put("applicant_id", application.getApplicantId());
+        payload.put("project_name", application.getApplicantName() + "的取水申请");
+        payload.put("water_use", "生活用水");
+        payload.put("location", "浙江省");
+        payload.put("attachments", application.getFiles());
+        return payload;
+    }
+
+    private List<String> extractFileNames(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return files.stream()
+                .map(MultipartFile::getOriginalFilename)
+                .filter(name -> name != null && !name.isBlank())
+                .toList();
+    }
+
+    private void seedData() {
+        Application first = new Application();
+        first.setId(sequence.getAndIncrement());
+        first.setApplicantName("张三");
+        first.setApplicantId("330101199001011234");
+        first.setApplicationDate(LocalDateTime.now().minusDays(1));
+        first.setStatus("PENDING");
+        first.setFiles(List.of("水资源论证报告.pdf", "营业执照复印件.pdf"));
+        store.put(first.getId(), first);
+
+        Application second = new Application();
+        second.setId(sequence.getAndIncrement());
+        second.setApplicantName("李四");
+        second.setApplicantId("330101199202021234");
+        second.setApplicationDate(LocalDateTime.now().minusHours(6));
+        second.setStatus("APPROVED");
+        second.setFiles(List.of("申请表.pdf", "承诺书.pdf"));
+        second.setReviewResult(
+                "{\"status\":\"APPROVED\",\"message\":\"示例审核结果\",\"details\":{\"completeness\":{\"complete\":true},\"knowledge_hits\":[]}} ");
+        store.put(second.getId(), second);
+    }
+
+    private static final class JsonSupport {
+        private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        private JsonSupport() {
+        }
+
+        private static String toJson(Object value) {
+            try {
+                return MAPPER.writeValueAsString(value);
+            } catch (Exception ex) {
+                return "{}";
+            }
+        }
+    }
+}
