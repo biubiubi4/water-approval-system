@@ -8,10 +8,14 @@ public class ApplicationResponse {
     private Long id;
     private String applicantName;
     private String applicantId;
+    private String projectName;
+    private String waterUse;
+    private String location;
     private LocalDateTime applicationDate;
     private String status;
     private String reviewResult;
     private List<String> files;
+    private List<String> attachments;
 
     public Long getId() {
         return id;
@@ -35,6 +39,30 @@ public class ApplicationResponse {
 
     public void setApplicantId(String applicantId) {
         this.applicantId = applicantId;
+    }
+
+    public String getProjectName() {
+        return projectName;
+    }
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
+    }
+
+    public String getWaterUse() {
+        return waterUse;
+    }
+
+    public void setWaterUse(String waterUse) {
+        this.waterUse = waterUse;
+    }
+
+    public String getLocation() {
+        return location;
+    }
+
+    public void setLocation(String location) {
+        this.location = location;
     }
 
     public LocalDateTime getApplicationDate() {
@@ -67,5 +95,13 @@ public class ApplicationResponse {
 
     public void setFiles(List<String> files) {
         this.files = files;
+    }
+
+    public List<String> getAttachments() {
+        return attachments;
+    }
+
+    public void setAttachments(List<String> attachments) {
+        this.attachments = attachments;
     }
 }

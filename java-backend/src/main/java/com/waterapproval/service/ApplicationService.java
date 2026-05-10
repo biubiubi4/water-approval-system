@@ -21,10 +21,10 @@ public class ApplicationService {
 
     private final Map<Long, Application> store = new ConcurrentHashMap<>();
     private final AtomicLong sequence = new AtomicLong(1);
-    private final AiReviewClient aiReviewClient;
+    private final AiServiceClient aiServiceClient;
 
-    public ApplicationService(AiReviewClient aiReviewClient) {
-        this.aiReviewClient = aiReviewClient;
+    public ApplicationService(AiServiceClient aiServiceClient) {
+        this.aiServiceClient = aiServiceClient;
         seedData();
     }
 
@@ -44,6 +44,9 @@ public class ApplicationService {
         application.setId(sequence.getAndIncrement());
         application.setApplicantName(request.getApplicantName());
         application.setApplicantId(request.getApplicantId());
+        application.setProjectName(request.getProjectName());
+        application.setWaterUse(request.getWaterUse());
+        application.setLocation(request.getLocation());
         application.setApplicationDate(LocalDateTime.now());
         application.setStatus("PENDING");
         application.setFiles(extractFileNames(files));
@@ -54,9 +57,14 @@ public class ApplicationService {
     public ReviewResponse reviewApplication(Long id) {
         Application application = requireApplication(id);
         Map<String, Object> payload = buildPayload(application);
-        ReviewResponse response = aiReviewClient.review(payload);
-        application.setStatus(response.getStatus());
-        application.setReviewResult(JsonSupport.toJson(response));
+        Map<String, Object> aiResponse = aiServiceClient.reviewApplication(payload);
+        String status = (String) aiResponse.getOrDefault("status", "ERROR");
+        application.setStatus(status);
+        application.setReviewResult(JsonSupport.toJson(aiResponse));
+        
+        ReviewResponse response = new ReviewResponse();
+        response.setStatus(status);
+        response.setMessage((String) aiResponse.getOrDefault("message", ""));
         return response;
     }
 
@@ -73,10 +81,14 @@ public class ApplicationService {
         response.setId(application.getId());
         response.setApplicantName(application.getApplicantName());
         response.setApplicantId(application.getApplicantId());
+        response.setProjectName(application.getProjectName());
+        response.setWaterUse(application.getWaterUse());
+        response.setLocation(application.getLocation());
         response.setApplicationDate(application.getApplicationDate());
         response.setStatus(application.getStatus());
         response.setReviewResult(application.getReviewResult());
         response.setFiles(application.getFiles());
+        response.setAttachments(application.getAttachments());
         return response;
     }
 
@@ -84,9 +96,9 @@ public class ApplicationService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("applicant_name", application.getApplicantName());
         payload.put("applicant_id", application.getApplicantId());
-        payload.put("project_name", application.getApplicantName() + "的取水申请");
-        payload.put("water_use", "生活用水");
-        payload.put("location", "浙江省");
+        payload.put("project_name", application.getProjectName());
+        payload.put("water_use", application.getWaterUse());
+        payload.put("location", application.getLocation());
         payload.put("attachments", application.getFiles());
         return payload;
     }
@@ -106,18 +118,26 @@ public class ApplicationService {
         first.setId(sequence.getAndIncrement());
         first.setApplicantName("张三");
         first.setApplicantId("330101199001011234");
+        first.setProjectName("城市供水项目");
+        first.setWaterUse("生活用水");
+        first.setLocation("浙江省杭州市");
         first.setApplicationDate(LocalDateTime.now().minusDays(1));
         first.setStatus("PENDING");
         first.setFiles(List.of("水资源论证报告.pdf", "营业执照复印件.pdf"));
+        first.setAttachments(List.of("水资源论证报告.pdf", "营业执照复印件.pdf"));
         store.put(first.getId(), first);
 
         Application second = new Application();
         second.setId(sequence.getAndIncrement());
         second.setApplicantName("李四");
         second.setApplicantId("330101199202021234");
+        second.setProjectName("农业灌溉项目");
+        second.setWaterUse("农业用水");
+        second.setLocation("浙江省宁波市");
         second.setApplicationDate(LocalDateTime.now().minusHours(6));
         second.setStatus("APPROVED");
         second.setFiles(List.of("申请表.pdf", "承诺书.pdf"));
+        second.setAttachments(List.of("申请表.pdf", "承诺书.pdf"));
         second.setReviewResult(
                 "{\"status\":\"APPROVED\",\"message\":\"示例审核结果\",\"details\":{\"completeness\":{\"complete\":true},\"knowledge_hits\":[]}} ");
         store.put(second.getId(), second);

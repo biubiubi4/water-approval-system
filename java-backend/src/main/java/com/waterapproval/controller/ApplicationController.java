@@ -55,12 +55,12 @@ public class ApplicationController {
     public Map<String, Object> aiReviewApplication(@PathVariable Long id) {
         ApplicationResponse app = applicationService.getApplication(id);
         Map<String, Object> appData = Map.of(
-                "applicant_name", app.applicantName(),
-                "applicant_id", app.applicantId(),
-                "project_name", app.projectName(),
-                "water_use", app.waterUse(),
-                "location", app.location(),
-                "attachments", app.attachments()
+                "applicant_name", app.getApplicantName(),
+                "applicant_id", app.getApplicantId(),
+                "project_name", app.getProjectName(),
+                "water_use", app.getWaterUse(),
+                "location", app.getLocation(),
+                "attachments", app.getAttachments()
         );
         return aiServiceClient.reviewApplication(appData);
     }

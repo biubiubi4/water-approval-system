@@ -1,0 +1,13 @@
+com\waterapproval\exception\GlobalExceptionHandler.class
+com\waterapproval\controller\AiController.class
+com\waterapproval\service\AiReviewClient.class
+com\waterapproval\dto\ReviewResponse.class
+com\waterapproval\service\ApplicationService$JsonSupport.class
+com\waterapproval\WaterApprovalApplication.class
+com\waterapproval\dto\CreateApplicationRequest.class
+com\waterapproval\service\ApplicationService.class
+com\waterapproval\service\AiServiceClient.class
+com\waterapproval\exception\ApplicationNotFoundException.class
+com\waterapproval\controller\ApplicationController.class
+com\waterapproval\entity\Application.class
+com\waterapproval\dto\ApplicationResponse.class

@@ -25,17 +25,6 @@ class ReviewRequest(BaseModel):
     application: Dict[str, Any] = Field(default_factory=dict, description="申请数据")
 
 
-@app.on_event("startup")
-async def startup_event():
-    """启动时初始化知识库"""
-    print("初始化向量数据库...")
-    init_vector_store()
-    # 预加载一些示例法规文档
-    from app.knowledge_base import init_sample_knowledge
-    init_sample_knowledge()
-    print("系统启动完成！")
-
-
 @app.get("/")
 def root() -> Dict[str, str]:
     return {
@@ -52,7 +41,6 @@ def health() -> Dict[str, str]:
 
 @app.get("/api/mcp/tools")
 def get_mcp_tools() -> Dict[str, Any]:
-    """获取可用的MCP工具列表"""
     return {
         "tools": [tool.model_dump() for tool in MCP_TOOLS]
     }
@@ -60,7 +48,6 @@ def get_mcp_tools() -> Dict[str, Any]:
 
 @app.post("/api/mcp/{tool_name}")
 def call_mcp_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-    """调用MCP工具"""
     try:
         result = execute_tool(tool_name, args)
         return {
@@ -78,13 +65,11 @@ def call_mcp_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.post("/api/knowledge/add")
 def api_add_knowledge(payload: KnowledgeTextIn) -> Dict[str, Any]:
-    """添加文本知识"""
     return add_knowledge_text(payload.text, source=payload.source, metadata=payload.metadata)
 
 
 @app.post("/api/knowledge/upload")
 async def api_upload_knowledge(files: List[UploadFile] | None = File(default=None)) -> Dict[str, Any]:
-    """上传文档到知识库"""
     saved_dir = settings.chroma_dir.parent / "uploads"
     saved_dir.mkdir(parents=True, exist_ok=True)
 
@@ -100,14 +85,12 @@ async def api_upload_knowledge(files: List[UploadFile] | None = File(default=Non
 
 @app.get("/api/knowledge/search")
 def api_search_knowledge(q: str, top_k: int = 4) -> Dict[str, Any]:
-    """搜索知识库"""
     from app.tools import knowledge_search
     return {"query": q, "results": knowledge_search(q, top_k=top_k)}
 
 
 @app.post("/api/review")
 def api_review(payload: ReviewRequest) -> Dict[str, Any]:
-    """使用Agent审核申请"""
     agent = get_agent()
     result = agent.review(payload.application)
     return result
@@ -115,5 +98,23 @@ def api_review(payload: ReviewRequest) -> Dict[str, Any]:
 
 @app.post("/api/check-completeness")
 def api_check_completeness(payload: ReviewRequest) -> Dict[str, Any]:
-    """检查材料完整性（直接调用工具）"""
     return execute_tool("check_completeness", {"application": payload.application})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print("启动涉水审批智能审核AI服务...")
+    print(f"配置目录: {settings.chroma_dir}")
+    
+    print("初始化向量数据库...")
+    init_vector_store()
+    
+    print("加载示例法规文档...")
+    from app.knowledge_base import init_sample_knowledge
+    init_sample_knowledge()
+    
+    print("服务启动完成！")
+    print(f"访问地址: http://127.0.0.1:{settings.port}")
+    print(f"API文档: http://127.0.0.1:{settings.port}/docs")
+    
+    uvicorn.run(app, host="0.0.0.0", port=settings.port)
