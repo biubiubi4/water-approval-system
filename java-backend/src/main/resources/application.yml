@@ -4,6 +4,16 @@ server:
 spring:
   application:
     name: water-approval-backend
+  datasource:
+    url: jdbc:mysql://localhost:3306/water_approval_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+    username: root
+    password: 123456
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
 
 app:
   ai-service-base-url: ${AI_SERVICE_BASE_URL:http://127.0.0.1:8000}
