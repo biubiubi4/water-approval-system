@@ -89,6 +89,23 @@ def api_search_knowledge(q: str, top_k: int = 4) -> Dict[str, Any]:
     return {"query": q, "results": knowledge_search(q, top_k=top_k)}
 
 
+@app.post("/api/knowledge/delete")
+def api_delete_knowledge(payload: Dict[str, list]) -> Dict[str, Any]:
+    names = payload.get("files") or []
+    # 删除存储的文件（uploads 目录）
+    saved_dir = settings.chroma_dir.parent / "uploads"
+    for name in names:
+        try:
+            p = saved_dir / name
+            if p.exists():
+                p.unlink()
+        except Exception as e:
+            print(f"删除上传文件失败 {name}: {e}")
+
+    from app.service import remove_knowledge_files
+    return remove_knowledge_files(names)
+
+
 @app.post("/api/review")
 def api_review(payload: ReviewRequest) -> Dict[str, Any]:
     agent = get_agent()

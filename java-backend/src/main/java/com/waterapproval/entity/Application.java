@@ -1,11 +1,23 @@
 package com.waterapproval.entity;
 
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+@Entity
+@Table(name = "application")
 public class Application {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String applicantName;
     private String applicantId;
@@ -14,8 +26,13 @@ public class Application {
     private String location;
     private LocalDateTime applicationDate;
     private String status;
+    @Lob
     private String reviewResult;
+
+    @ElementCollection
     private List<String> files = new ArrayList<>();
+
+    @ElementCollection
     private List<String> attachments = new ArrayList<>();
 
     public Long getId() {

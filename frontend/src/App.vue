@@ -4,14 +4,15 @@
       <h1>涉水审批智能审核系统</h1>
       <nav class="nav">
         <button @click="currentPage = 'list'" :class="{ active: currentPage === 'list' }">申请列表</button>
-        <button @click="currentPage = 'create'" :class="{ active: currentPage === 'create' }">新建申请</button>
+        <button @click="newApplication" :class="{ active: currentPage === 'create' }">新建申请</button>
         <button @click="currentPage = 'result'" :class="{ active: currentPage === 'result' }">初审结果</button>
       </nav>
     </header>
     <main class="main-content">
-      <ApplicationList v-if="currentPage === 'list'" @select-application="viewResult" />
-      <CreateApplication v-if="currentPage === 'create'" />
+      <ApplicationList v-if="currentPage === 'list'" @select-application="viewDetails" @edit-application="editApplication" />
+      <CreateApplication v-if="currentPage === 'create'" :application="selectedApplication" @saved="onSaved" />
       <ReviewResult v-if="currentPage === 'result'" :application="selectedApplication" />
+      <ApplicationDetails v-if="currentPage === 'details'" :application="selectedApplication" />
     </main>
   </div>
 </template>
@@ -21,6 +22,7 @@ import { ref } from 'vue'
 import ApplicationList from './components/ApplicationList.vue'
 import CreateApplication from './components/CreateApplication.vue'
 import ReviewResult from './components/ReviewResult.vue'
+import ApplicationDetails from './components/ApplicationDetails.vue'
 
 const currentPage = ref('list')
 const selectedApplication = ref(null)
@@ -28,6 +30,27 @@ const selectedApplication = ref(null)
 const viewResult = (application) => {
   selectedApplication.value = application
   currentPage.value = 'result'
+}
+
+const viewDetails = (application) => {
+  selectedApplication.value = application
+  currentPage.value = 'details'
+}
+
+const editApplication = (application) => {
+  selectedApplication.value = application
+  currentPage.value = 'create'
+}
+
+const onSaved = () => {
+  // 清除选中并跳回列表
+  selectedApplication.value = null
+  currentPage.value = 'list'
+}
+
+const newApplication = () => {
+  selectedApplication.value = null
+  currentPage.value = 'create'
 }
 </script>
 

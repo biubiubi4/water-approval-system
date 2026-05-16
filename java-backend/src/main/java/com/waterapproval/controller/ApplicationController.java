@@ -46,6 +46,14 @@ public class ApplicationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @PutMapping("/{id}")
+    public ApplicationResponse updateApplication(
+            @PathVariable Long id,
+            @Valid @ModelAttribute CreateApplicationRequest request,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files) {
+        return applicationService.updateApplication(id, request, files);
+    }
+
     @PostMapping("/{id}/review")
     public ReviewResponse reviewApplication(@PathVariable Long id) {
         return applicationService.reviewApplication(id);
@@ -63,6 +71,12 @@ public class ApplicationController {
                 "attachments", app.getAttachments()
         );
         return aiServiceClient.reviewApplication(appData);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteApplication(@PathVariable Long id) {
+        applicationService.deleteApplication(id);
+        return ResponseEntity.noContent().build();
     }
 }
 

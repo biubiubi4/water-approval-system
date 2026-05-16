@@ -26,6 +26,8 @@
           </td>
           <td>
             <button @click="$emit('select-application', app)" class="btn-view">查看详情</button>
+            <button @click="$emit('edit-application', app)" class="btn-edit">编辑</button>
+            <button @click="deleteApplication(app.id)" class="btn-delete">删除</button>
           </td>
         </tr>
       </tbody>
@@ -40,7 +42,7 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
-const emit = defineEmits(['select-application'])
+const emit = defineEmits(['select-application', 'edit-application'])
 
 const applications = ref([])
 const searchQuery = ref('')
@@ -89,6 +91,19 @@ const fetchApplications = async () => {
     applications.value = response.data
   } catch (error) {
     console.error('获取申请列表失败:', error)
+  }
+}
+
+const deleteApplication = async (id) => {
+  if (!confirm('确认删除该申请吗？此操作会同时删除上传的附件。')) return
+  try {
+    await axios.delete(`/api/applications/${id}`)
+    // 刷新列表
+    await fetchApplications()
+    alert('删除成功')
+  } catch (error) {
+    console.error('删除失败:', error)
+    alert('删除失败: ' + (error.response?.data?.message || error.message))
   }
 }
 
@@ -181,6 +196,26 @@ onMounted(fetchApplications)
 
 .btn-view:hover {
   background-color: #1e3a8a;
+}
+
+.btn-edit {
+  padding: 0.4rem 0.8rem;
+  margin-left: 0.5rem;
+  background-color: #059669;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-delete {
+  padding: 0.4rem 0.8rem;
+  margin-left: 0.5rem;
+  background-color: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .empty-state {

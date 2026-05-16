@@ -14,6 +14,7 @@ except ImportError:
 from app.mcp_tools import MCP_TOOLS, execute_tool
 from app.vector_store import vector_store
 from app.config import settings
+from app.llm_client import llm_client
 
 
 SYSTEM_PROMPT = """你是一个专业的涉水审批智能审核助手。请按照以下步骤进行审核：
@@ -82,6 +83,8 @@ class WaterApprovalAgent:
     def __init__(self):
         self.tools = create_langchain_tools()
         self.agent_executor = None
+        # optional external LLM client (may be disabled)
+        self.llm = llm_client
     
     def review(self, application_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行审核"""
@@ -115,18 +118,35 @@ class WaterApprovalAgent:
             result["knowledge_hits"] = search_result.get("results", [])
         except Exception as e:
             print(f"知识库搜索失败: {e}")
-        
-        # 步骤3：合规性判断
-        compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
-        result["details"]["compliance"] = compliance_result
-        
-        if compliance_result["violations"]:
-            result["status"] = "REJECTED"
-            result["message"] = "申请不符合法规要求"
-            result["suggestions"] = compliance_result["violations"]
+
+        # 步骤3：合规性判断（优先使用外部AI，如未配置则回退到本地规则）
+        if self.llm and getattr(self.llm, "enabled", False):
+            llm_resp = self.llm.generate_review(application_data, result["knowledge_hits"])
+            if llm_resp is None:
+                # 没有有效配置，回退到本地实现
+                compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+                result["details"]["compliance"] = compliance_result
+                self._apply_local_decision(result, compliance_result)
+            elif isinstance(llm_resp, dict) and llm_resp.get("error"):
+                # 外部AI调用失败 — 记录错误并回退
+                result["details"]["llm_error"] = llm_resp
+                compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+                result["details"]["compliance"] = compliance_result
+                self._apply_local_decision(result, compliance_result)
+            else:
+                # 使用外部AI返回的结果（期望与现有结果结构兼容）
+                # 合并外部结果到返回值（保留本地知识命中以便排查）
+                result.update(llm_resp)
+                result.setdefault("knowledge_hits", result.get("knowledge_hits", []))
+                # 如果外部结果没有 status 等字段，不改变本地默认逻辑
+                if "status" not in result:
+                    compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+                    result["details"]["compliance"] = compliance_result
+                    self._apply_local_decision(result, compliance_result)
         else:
-            result["status"] = "APPROVED"
-            result["message"] = "申请审核通过"
+            compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+            result["details"]["compliance"] = compliance_result
+            self._apply_local_decision(result, compliance_result)
         
         return result
     
@@ -164,6 +184,15 @@ class WaterApprovalAgent:
             "violations": violations,
             "pass": len(violations) == 0,
         }
+
+    def _apply_local_decision(self, result: Dict[str, Any], compliance_result: Dict[str, Any]) -> None:
+        if compliance_result.get("violations"):
+            result["status"] = "REJECTED"
+            result["message"] = "申请不符合法规要求"
+            result["suggestions"] = compliance_result["violations"]
+        else:
+            result["status"] = "APPROVED"
+            result["message"] = "申请审核通过"
 
 
 agent: Optional[WaterApprovalAgent] = None

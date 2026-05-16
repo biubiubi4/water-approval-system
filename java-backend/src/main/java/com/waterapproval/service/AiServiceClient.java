@@ -93,4 +93,26 @@ public class AiServiceClient {
             return errorResult;
         }
     }
+
+    public Map<String, Object> deleteKnowledge(java.util.List<String> fileNames) {
+        String url = aiServiceUrl + "/api/knowledge/delete";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("files", fileNames);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
 }

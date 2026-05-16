@@ -76,3 +76,21 @@ def clear_knowledge() -> Dict[str, Any]:
         "message": f"已清空 {count} 条知识",
         "cleared": count,
     }
+
+
+def remove_knowledge_files(file_names: list[str]) -> Dict[str, Any]:
+    """从向量库中移除指定来源（文件名）的知识片段"""
+    if not file_names:
+        return {"status": "no files", "message": "未提供文件名"}
+
+    collection = vector_store._collection
+    removed = 0
+    for name in file_names:
+        try:
+            # 使用 metadata 中的 source 字段进行删除
+            collection.delete(where={"source": name})
+            removed += 1
+        except Exception as e:
+            print(f"删除知识片段失败 ({name}): {e}")
+
+    return {"status": "ok", "message": f"请求删除 {len(file_names)} 个来源，已尝试删除 {removed} 项", "requested": len(file_names), "removed": removed}

@@ -1,6 +1,6 @@
 <template>
   <div class="create-application">
-    <h2>新建申请</h2>
+    <h2>{{ isEdit ? '编辑申请' : '新建申请' }}</h2>
     <form @submit.prevent="submitApplication" class="form">
       <div class="form-group">
         <label for="applicantName">申请人姓名</label>
@@ -25,12 +25,19 @@
             </div>
           </div>
         </div>
+        <div v-if="isEdit && existingFiles.length > 0" class="existing-files">
+          <h4>当前已上传的附件（编辑时若上传新附件将替换旧附件）</h4>
+          <ul>
+            <li v-for="(f, idx) in existingFiles" :key="idx">{{ f }}</li>
+          </ul>
+        </div>
       </div>
       <div class="form-actions">
         <button type="submit" :disabled="isSubmitting" class="btn-submit">
           <span v-if="isSubmitting">提交中...</span>
-          <span v-else>提交申请</span>
+          <span v-else>{{ isEdit ? '保存修改' : '提交申请' }}</span>
         </button>
+        <button v-if="isEdit" type="button" @click="cancelEdit" class="btn-cancel">取消</button>
       </div>
     </form>
     <div v-if="message" :class="messageClass" class="message">
@@ -40,7 +47,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import axios from 'axios'
 
 const form = reactive({
@@ -53,6 +60,33 @@ const fileInput = ref(null)
 const isSubmitting = ref(false)
 const message = ref('')
 const messageType = ref('')
+const existingFiles = ref([])
+
+const props = defineProps({
+  application: {
+    type: Object,
+    default: null
+  }
+})
+
+const isEdit = computed(() => !!props.application)
+
+function resetForm() {
+  form.applicantName = ''
+  form.applicantId = ''
+  files.value = []
+  existingFiles.value = []
+}
+
+watch(() => props.application, (val) => {
+  if (val) {
+    form.applicantName = val.applicantName || ''
+    form.applicantId = val.applicantId || ''
+    existingFiles.value = Array.isArray(val.files) ? [...val.files] : []
+  } else {
+    resetForm()
+  }
+}, { immediate: true })
 
 const messageClass = {
   'message-success': messageType.value === 'success',
@@ -78,7 +112,8 @@ const removeFile = (index) => {
 }
 
 const submitApplication = async () => {
-  if (files.value.length === 0) {
+  // 对于新建，要求至少上传一个附件；编辑时可不上传（保持原文件）
+  if (!isEdit.value && files.value.length === 0) {
     showMessage('请至少上传一个附件', 'error')
     return
   }
@@ -95,18 +130,26 @@ const submitApplication = async () => {
   })
 
   try {
-    const response = await axios.post('/api/applications', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    let response
+    if (isEdit.value) {
+      // 编辑：仅在有新文件时上传 files，会替换后端文件
+      response = await axios.put(`/api/applications/${props.application.id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      showMessage('修改已保存', 'success')
+    } else {
+      response = await axios.post('/api/applications', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      if (response.status === 201) {
+        showMessage('申请提交成功', 'success')
+        resetForm()
       }
-    })
-    
-    if (response.status === 201) {
-      showMessage('申请提交成功', 'success')
-      resetForm()
     }
+    // 通知父组件刷新列表
+    emitSaved()
   } catch (error) {
-    showMessage('申请提交失败: ' + (error.response?.data?.message || error.message), 'error')
+    showMessage('请求失败: ' + (error.response?.data?.message || error.message), 'error')
   } finally {
     isSubmitting.value = false
   }
@@ -121,10 +164,17 @@ const showMessage = (msg, type) => {
   }, 5000)
 }
 
-const resetForm = () => {
-  form.applicantName = ''
-  form.applicantId = ''
-  files.value = []
+// resetForm declared earlier
+
+const cancelEdit = () => {
+  // 清除选中并返回列表
+  emitSaved()
+}
+
+const emit = defineEmits(['saved'])
+
+const emitSaved = () => {
+  emit('saved')
 }
 </script>
 
