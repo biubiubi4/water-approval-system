@@ -1,17 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
-    from langchain.agents import AgentExecutor, create_react_agent
-    from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
     from langchain.tools import StructuredTool, Tool
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.runnables import RunnablePassthrough
 except ImportError:
     pass
 
 from app.mcp_tools import MCP_TOOLS, execute_tool
+from app.documents import process_documents
 from app.vector_store import vector_store
 from app.config import settings
 from app.llm_client import llm_client
@@ -95,6 +93,28 @@ class WaterApprovalAgent:
             "suggestions": [],
             "knowledge_hits": [],
         }
+
+        file_paths = self._resolve_application_file_paths(application_data)
+        loaded_documents = []
+        if file_paths:
+            loaded_documents = process_documents(file_paths)
+            result["details"]["attachment_documents"] = [
+                {
+                    "file_path": doc.metadata.get("file_path"),
+                    "source": doc.metadata.get("source"),
+                    "chunk_index": doc.metadata.get("chunk_index"),
+                    "preview": doc.page_content[:300],
+                }
+                for doc in loaded_documents
+            ]
+
+            if not loaded_documents:
+                result["status"] = "ERROR"
+                result["message"] = "审批时无法加载本地附件"
+                result["details"]["attachment_paths"] = [str(path) for path in file_paths]
+                return result
+        else:
+            result["details"]["attachment_documents"] = []
         
         # 步骤1：完整性检查
         try:
@@ -113,7 +133,7 @@ class WaterApprovalAgent:
         
         # 步骤2：搜索相关法规
         try:
-            search_query = self._build_search_query(application_data)
+            search_query = self._build_search_query(application_data, loaded_documents)
             search_result = execute_tool("knowledge_search", {"query": search_query, "top_k": 3})
             result["knowledge_hits"] = search_result.get("results", [])
         except Exception as e:
@@ -150,7 +170,7 @@ class WaterApprovalAgent:
         
         return result
     
-    def _build_search_query(self, application: Dict[str, Any]) -> str:
+    def _build_search_query(self, application: Dict[str, Any], documents: List[Any] | None = None) -> str:
         """构建搜索查询"""
         parts = []
         if "water_use" in application:
@@ -159,8 +179,43 @@ class WaterApprovalAgent:
             parts.append(f"取水地点：{application['location']}")
         if "project_name" in application:
             parts.append(f"项目：{application['project_name']}")
+
+        if documents:
+            snippets = []
+            for document in documents[:3]:
+                text = (getattr(document, "page_content", "") or "").strip()
+                if text:
+                    snippets.append(text[:200])
+            if snippets:
+                parts.append("附件摘要：" + " ".join(snippets))
         
         return " ".join(parts) if parts else "取水许可审批 水法"
+
+    def _resolve_application_file_paths(self, application: Dict[str, Any]) -> List[Path]:
+        raw_paths = application.get("file_paths") or application.get("file_names") or application.get("attachments") or []
+        if not isinstance(raw_paths, list):
+            return []
+
+        upload_dir = Path(__file__).resolve().parent.parent.parent / "java-backend" / "uploads"
+        resolved_paths: List[Path] = []
+        for item in raw_paths:
+            value = str(item).strip()
+            if not value:
+                continue
+
+            candidate = Path(value)
+            if candidate.is_absolute():
+                resolved_paths.append(candidate)
+                continue
+
+            direct_candidate = upload_dir / value
+            if direct_candidate.exists():
+                resolved_paths.append(direct_candidate)
+                continue
+
+            resolved_paths.append(upload_dir / candidate.name)
+
+        return resolved_paths
     
     def _check_compliance(self, application: Dict[str, Any], knowledge_hits: List[Dict]) -> Dict[str, Any]:
         """合规性检查"""

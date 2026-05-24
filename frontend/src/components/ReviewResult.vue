@@ -59,6 +59,27 @@
               </ul>
             </div>
           </div>
+
+          <div v-if="reviewResult.knowledge_hits && reviewResult.knowledge_hits.length > 0" class="knowledge-hits">
+            <h4>相关法规命中</h4>
+            <div
+              v-for="hit in reviewResult.knowledge_hits"
+              :key="`${hit.rank}-${hit.file_path || hit.source}`"
+              class="hit-card"
+            >
+              <div class="hit-card-head">
+                <strong>命中 {{ hit.rank }}</strong>
+                <span class="hit-score">相似度 {{ formatSimilarity(hit.similarity) }}</span>
+              </div>
+              <div class="hit-meta">
+                <span>来源：{{ hit.source || '-' }}</span>
+                <span>分数：{{ formatScore(hit.score) }}</span>
+                <span v-if="hit.page != null">页码：{{ hit.page }}</span>
+                <span v-if="hit.chunk != null">分块：{{ hit.chunk }}</span>
+              </div>
+              <p class="hit-content">{{ hit.content }}</p>
+            </div>
+          </div>
         </div>
         
         <div v-else class="no-result">
@@ -106,6 +127,16 @@ const formatDate = (dateStr) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const formatSimilarity = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
+  return Number(value).toFixed(4)
+}
+
+const formatScore = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
+  return Number(value).toFixed(4)
 }
 
 const getStatusClass = (status) => {
@@ -333,6 +364,56 @@ watch(() => props.application, () => {
 .suggestions li {
   margin-bottom: 0.25rem;
   color: #78350f;
+}
+
+.knowledge-hits {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.knowledge-hits h4 {
+  margin-bottom: 0.75rem;
+  color: #374151;
+}
+
+.hit-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.8rem;
+  background: #f9fafb;
+}
+
+.hit-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.hit-score {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.55rem;
+}
+
+.hit-content {
+  line-height: 1.7;
+  color: #111827;
 }
 
 .no-result,

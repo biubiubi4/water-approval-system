@@ -19,6 +19,10 @@ def _collection():
     return vector_store._collection
 
 
+def _uploads_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "java-backend" / "uploads"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -303,6 +307,75 @@ def delete_knowledge_record(record_id: str) -> Dict[str, Any]:
         "message": "记录已删除",
         "deleted": 1,
         "record": existing,
+    }
+
+
+def delete_knowledge_records(record_ids: List[str]) -> Dict[str, Any]:
+    normalized_ids = [str(record_id).strip() for record_id in record_ids if str(record_id).strip()]
+    if not normalized_ids:
+        return {"status": "no records", "message": "未提供要删除的记录 ID"}
+
+    collection = _collection()
+    raw = collection.get(ids=normalized_ids, include=["documents", "metadatas"])
+    existing_ids = raw.get("ids") or []
+    existing_documents = raw.get("documents") or []
+    existing_metadatas = raw.get("metadatas") or []
+
+    existing_records = [
+        _format_record(
+            existing_ids[index],
+            existing_documents[index] if index < len(existing_documents) else "",
+            existing_metadatas[index] if index < len(existing_metadatas) else {},
+        )
+        for index in range(len(existing_ids))
+    ]
+
+    if existing_ids:
+        collection.delete(ids=existing_ids)
+
+    return {
+        "status": "ok",
+        "message": f"已删除 {len(existing_ids)} 条知识记录",
+        "requested_ids": normalized_ids,
+        "deleted": len(existing_ids),
+        "records": existing_records,
+    }
+
+
+def remove_knowledge_by_sources(source_names: List[str]) -> Dict[str, Any]:
+    """按来源批量删除向量库中的知识片段"""
+    normalized_sources = [str(name).strip() for name in source_names if str(name).strip()]
+    if not normalized_sources:
+        return {"status": "no sources", "message": "未提供来源名称"}
+
+    collection = _collection()
+    removed_sources: List[Dict[str, Any]] = []
+    removed_count = 0
+
+    for source_name in normalized_sources:
+        raw = collection.get(where={"source": source_name}, include=["documents", "metadatas"])
+        ids = raw.get("ids") or []
+        if not ids:
+            removed_sources.append({"source": source_name, "removed": 0})
+            continue
+
+        collection.delete(ids=ids)
+        removed_count += len(ids)
+        removed_sources.append({"source": source_name, "removed": len(ids)})
+
+        upload_file = _uploads_dir() / source_name
+        try:
+            if upload_file.exists() and upload_file.is_file():
+                upload_file.unlink()
+        except Exception as error:
+            print(f"删除本地上传文件失败 {source_name}: {error}")
+
+    return {
+        "status": "ok",
+        "message": f"已按来源删除 {removed_count} 条知识片段",
+        "requested_sources": normalized_sources,
+        "removed": removed_count,
+        "details": removed_sources,
     }
 
 

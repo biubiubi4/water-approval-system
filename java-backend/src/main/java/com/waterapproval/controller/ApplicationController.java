@@ -11,6 +11,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -62,14 +65,15 @@ public class ApplicationController {
     @PostMapping("/{id}/ai-review")
     public Map<String, Object> aiReviewApplication(@PathVariable Long id) {
         ApplicationResponse app = applicationService.getApplication(id);
-        Map<String, Object> appData = Map.of(
-                "applicant_name", app.getApplicantName(),
-                "applicant_id", app.getApplicantId(),
-                "project_name", app.getProjectName(),
-                "water_use", app.getWaterUse(),
-                "location", app.getLocation(),
-                "attachments", app.getAttachments()
-        );
+        Map<String, Object> appData = new LinkedHashMap<>();
+        appData.put("applicant_name", app.getApplicantName());
+        appData.put("applicant_id", app.getApplicantId());
+        appData.put("project_name", app.getProjectName());
+        appData.put("water_use", app.getWaterUse());
+        appData.put("location", app.getLocation());
+        appData.put("attachments", app.getAttachments());
+        appData.put("file_names", app.getFiles());
+        appData.put("file_paths", buildFilePaths(app.getFiles()));
         return aiServiceClient.reviewApplication(appData);
     }
 
@@ -77,6 +81,17 @@ public class ApplicationController {
     public ResponseEntity<?> deleteApplication(@PathVariable Long id) {
         applicationService.deleteApplication(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private List<String> buildFilePaths(List<String> fileNames) {
+        if (fileNames == null || fileNames.isEmpty()) {
+            return List.of();
+        }
+
+        Path uploadDir = Paths.get(System.getProperty("user.dir"), "uploads").toAbsolutePath().normalize();
+        return fileNames.stream()
+                .map(fileName -> uploadDir.resolve(fileName).normalize().toString())
+                .toList();
     }
 }
 

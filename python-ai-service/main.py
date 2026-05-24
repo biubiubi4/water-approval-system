@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -14,6 +15,9 @@ from app.service import (
     delete_knowledge_record,
     get_knowledge_record,
     list_knowledge_records,
+    remove_knowledge_by_sources,
+    remove_knowledge_files,
+    delete_knowledge_records,
     update_knowledge_record,
 )
 from app.agent import get_agent
@@ -21,6 +25,13 @@ from app.mcp_tools import MCP_TOOLS, execute_tool
 from app.vector_store import init_vector_store, vector_store
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class KnowledgeTextIn(BaseModel):
@@ -128,6 +139,12 @@ def api_list_knowledge_records(
     return list_knowledge_records(query=q, source=source, record_type=record_type)
 
 
+@app.post("/api/knowledge/records/batch-delete")
+def api_batch_delete_knowledge_records(payload: Dict[str, list]) -> Dict[str, Any]:
+    record_ids = payload.get("ids") or []
+    return delete_knowledge_records(record_ids)
+
+
 @app.get("/api/knowledge/records/{record_id}")
 def api_get_knowledge_record(record_id: str) -> Dict[str, Any]:
     try:
@@ -175,8 +192,13 @@ def api_delete_knowledge(payload: Dict[str, list]) -> Dict[str, Any]:
         except Exception as e:
             print(f"删除上传文件失败 {name}: {e}")
 
-    from app.service import remove_knowledge_files
     return remove_knowledge_files(names)
+
+
+@app.post("/api/knowledge/delete-by-source")
+def api_delete_knowledge_by_source(payload: Dict[str, list]) -> Dict[str, Any]:
+    sources = payload.get("sources") or []
+    return remove_knowledge_by_sources(sources)
 
 
 @app.post("/api/review")

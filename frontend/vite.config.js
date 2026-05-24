@@ -6,7 +6,23 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
+      '/api/applications': {
+        target: 'http://localhost:8080',
+        changeOrigin: true
+      },
+      '/api/ai': {
+        target: 'http://localhost:8080',
+        changeOrigin: true
+      },
+      '/api/knowledge': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/api/mcp': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/api/check-completeness': {
         target: 'http://localhost:8000',
         changeOrigin: true
       }

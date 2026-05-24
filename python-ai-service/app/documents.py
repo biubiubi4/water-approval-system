@@ -43,12 +43,107 @@ def _load_documents_from_loader(loader: object) -> List[Document]:
         return []
 
 
+def _clean_extracted_text(text: str) -> str:
+    if not text:
+        return ""
+
+    cleaned = text.replace("\u00a0", " ")
+    cleaned = cleaned.replace("\u200b", "")
+    cleaned = cleaned.replace("\ufeff", "")
+    cleaned = cleaned.replace("\ufffd", "")
+    cleaned = cleaned.replace("-\n", "")
+    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+
+    lines = []
+    for line in cleaned.split("\n"):
+        line = " ".join(line.split())
+        if line:
+            lines.append(line)
+
+    cleaned = "\n".join(lines)
+    cleaned = cleaned.replace(" ,", ",").replace(" .", ".").replace(" ：", "：").replace(" ：", "：")
+    cleaned = cleaned.replace(" ；", "；").replace(" ！", "！").replace(" ？", "？")
+    return cleaned.strip()
+
+
+def _normalize_documents(documents: List[Document], file_path: Path) -> List[Document]:
+    normalized: List[Document] = []
+    for document in documents:
+        page_content = _clean_extracted_text(document.page_content)
+        if not page_content:
+            continue
+
+        metadata = dict(document.metadata or {})
+        metadata.setdefault("source", file_path.name)
+        metadata.setdefault("file_path", str(file_path))
+        normalized.append(Document(page_content=page_content, metadata=metadata))
+
+    return normalized
+
+
+def _create_pdf_loader(file_path: Path, extract_images: bool = False) -> object:
+    loader_kwargs = {}
+    if extract_images:
+        loader_kwargs["extract_images"] = True
+
+    try:
+        return PyPDFLoader(str(file_path), **loader_kwargs)
+    except TypeError:
+        return PyPDFLoader(str(file_path))
+
+
+def _load_docx_with_python_docx(file_path: Path) -> List[Document]:
+    try:
+        from docx import Document as WordDocument
+    except Exception as error:
+        print(f"python-docx 不可用 {file_path}: {error}")
+        return []
+
+    try:
+        document = WordDocument(str(file_path))
+    except Exception as error:
+        print(f"Word 备用解析失败 {file_path}: {error}")
+        return []
+
+    lines: List[str] = []
+
+    for paragraph in document.paragraphs:
+        text = paragraph.text.strip()
+        if text:
+            lines.append(text)
+
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if cells:
+                lines.append("\t".join(cells))
+
+    for section in document.sections:
+        header = section.header
+        footer = section.footer
+        for paragraph in header.paragraphs:
+            text = paragraph.text.strip()
+            if text:
+                lines.append(text)
+        for paragraph in footer.paragraphs:
+            text = paragraph.text.strip()
+            if text:
+                lines.append(text)
+
+    text = "\n".join(lines).strip()
+    if not text:
+        return []
+
+    return [Document(page_content=text, metadata={"source": file_path.name, "file_path": str(file_path)})]
+
+
 def split_text(
     text: str,
     chunk_size: int = 500,
     chunk_overlap: int = 100,
 ) -> List[str]:
     """将文本分割成小块"""
+    text = _clean_extracted_text(text)
     if not text.strip():
         return []
     
@@ -64,8 +159,13 @@ def split_text(
 def load_pdf(file_path: Path) -> List[Document]:
     """加载PDF文档"""
     try:
-        loader = PyPDFLoader(str(file_path))
-        return loader.load()
+        loader = _create_pdf_loader(file_path, extract_images=True)
+        documents = _normalize_documents(loader.load(), file_path)
+        if documents:
+            return documents
+
+        fallback_loader = _create_pdf_loader(file_path, extract_images=False)
+        return _normalize_documents(fallback_loader.load(), file_path)
     except Exception as e:
         print(f"PDF加载失败 {file_path}: {e}")
         return []
@@ -75,21 +175,24 @@ def load_docx(file_path: Path) -> List[Document]:
     """加载Word文档"""
     try:
         loader = Docx2txtLoader(str(file_path))
-        return loader.load()
+        documents = loader.load()
+        if documents and any(document.page_content.strip() for document in documents):
+            return _normalize_documents(documents, file_path)
+        return _load_docx_with_python_docx(file_path)
     except Exception as e:
         print(f"Word加载失败 {file_path}: {e}")
-        return []
+        return _load_docx_with_python_docx(file_path)
 
 
 def load_txt(file_path: Path) -> List[Document]:
     """加载文本文件"""
     try:
         loader = TextLoader(str(file_path), encoding="utf-8")
-        return loader.load()
+        return _normalize_documents(loader.load(), file_path)
     except UnicodeDecodeError:
         try:
             loader = TextLoader(str(file_path), encoding="gbk")
-            return loader.load()
+            return _normalize_documents(loader.load(), file_path)
         except Exception as e:
             print(f"Text加载失败 {file_path}: {e}")
             return []
@@ -100,7 +203,7 @@ def load_csv(file_path: Path) -> List[Document]:
         return load_txt(file_path)
     try:
         loader = CSVLoader(str(file_path), encoding="utf-8")
-        return loader.load()
+        return _normalize_documents(loader.load(), file_path)
     except Exception as error:
         print(f"CSV加载失败 {file_path}: {error}")
         return load_txt(file_path)
@@ -111,7 +214,7 @@ def load_html(file_path: Path) -> List[Document]:
         return load_txt(file_path)
     try:
         loader = UnstructuredHTMLLoader(str(file_path))
-        return loader.load()
+        return _normalize_documents(loader.load(), file_path)
     except Exception as error:
         print(f"HTML加载失败 {file_path}: {error}")
         return load_txt(file_path)
@@ -122,7 +225,7 @@ def load_json(file_path: Path) -> List[Document]:
         return load_txt(file_path)
     try:
         loader = JSONLoader(str(file_path), jq_schema=".", text_content=False)
-        return loader.load()
+        return _normalize_documents(loader.load(), file_path)
     except Exception as error:
         print(f"JSON加载失败 {file_path}: {error}")
         return load_txt(file_path)
@@ -134,7 +237,7 @@ def load_generic_file(file_path: Path) -> List[Document]:
         return []
     try:
         loader = UnstructuredFileLoader(str(file_path))
-        return loader.load()
+        return _normalize_documents(loader.load(), file_path)
     except Exception as error:
         print(f"通用文件加载失败 {file_path}: {error}")
         return load_txt(file_path)
@@ -150,7 +253,7 @@ def load_url(url: str) -> List[Document]:
     for loader in loaders:
         documents = _load_documents_from_loader(loader)
         if documents:
-            return documents
+            return [Document(page_content=_clean_extracted_text(doc.page_content), metadata=dict(doc.metadata or {})) for doc in documents if _clean_extracted_text(doc.page_content)]
 
     return []
 

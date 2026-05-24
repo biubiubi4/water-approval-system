@@ -173,6 +173,74 @@
       </div>
     </section>
 
+    <section class="semantic-search-panel">
+      <div class="panel-head">
+        <h3>语义检索</h3>
+        <span>基于向量数据库语义匹配</span>
+      </div>
+
+      <div class="semantic-search-form">
+        <textarea
+          v-model="semanticQuery"
+          rows="3"
+          placeholder="输入一段业务描述或法规问题，例如：取水许可申请缺少哪些必备材料？"
+          @keydown.enter.exact.prevent="runSemanticSearch"
+        ></textarea>
+        <div class="semantic-actions">
+          <label>
+            <span>返回条数</span>
+            <input v-model.number="semanticTopK" type="number" min="1" max="10" />
+          </label>
+          <button class="btn-primary" @click="runSemanticSearch" :disabled="semanticLoading">
+            {{ semanticLoading ? '检索中...' : '开始语义检索' }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="semanticLoading" class="loading-state">正在进行语义检索...</div>
+
+      <div v-else-if="semanticSearched && semanticResults.length === 0" class="empty-state">
+        未检索到相关文档片段，请尝试调整查询描述。
+      </div>
+
+      <div v-else-if="semanticResults.length > 0" class="semantic-result-list">
+        <article
+          v-for="item in semanticResults"
+          :key="`${item.rank}-${item.file_path || item.source || 'manual'}`"
+          class="semantic-result-card"
+        >
+          <div class="semantic-result-head">
+            <strong>命中 {{ item.rank }}</strong>
+            <span class="semantic-score">相似度 {{ formatSimilarity(item.similarity) }}</span>
+          </div>
+          <div class="semantic-meta">
+            <span>来源：{{ item.source || '-' }}</span>
+            <span>分数：{{ formatScore(item.score) }}</span>
+            <span v-if="item.page != null">页码：{{ item.page }}</span>
+            <span v-if="item.chunk != null">分块：{{ item.chunk }}</span>
+          </div>
+          <p class="semantic-content">{{ item.content || '无内容' }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="batch-toolbar">
+      <div class="batch-toolbar-group">
+        <span class="batch-summary">已选 {{ selectedRecordIds.length }} 条记录</span>
+        <button class="btn-ghost" @click="toggleSelectAll" :disabled="records.length === 0">
+          {{ allRecordsSelected ? '取消全选' : '全选' }}
+        </button>
+        <button class="btn-ghost" @click="clearSelectedRecords" :disabled="selectedRecordIds.length === 0">
+          清空选择
+        </button>
+      </div>
+      <div class="batch-toolbar-actions">
+        <button class="btn-danger" @click="handleBatchDeleteSelectedRecords" :disabled="batchDeleting || selectedRecordIds.length === 0">
+          {{ batchDeleting ? '删除中...' : '批量删除选中记录' }}
+        </button>
+      </div>
+    </section>
+
     <section class="content-grid">
       <div class="table-panel">
         <div class="panel-head compact">
@@ -190,6 +258,14 @@
           <table class="records-table">
             <thead>
               <tr>
+                <th class="select-col">
+                  <input
+                    type="checkbox"
+                    :checked="allRecordsSelected"
+                    :disabled="records.length === 0"
+                    @change="toggleSelectAll"
+                  />
+                </th>
                 <th>记录 ID</th>
                 <th>来源</th>
                 <th>类型</th>
@@ -205,6 +281,13 @@
                 :class="{ selected: selectedRecord?.id === record.id }"
                 @click="selectRecord(record)"
               >
+                <td class="select-col" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="isRecordSelected(record.id)"
+                    @change="toggleRecordSelection(record.id)"
+                  />
+                </td>
                 <td>{{ shortId(record.id) }}</td>
                 <td>{{ record.source }}</td>
                 <td>{{ record.type }}</td>
@@ -319,6 +402,13 @@ const selectedRecord = ref(null)
 const dialogOpen = ref(false)
 const dialogMode = ref('create')
 const editingId = ref(null)
+const selectedRecordIds = ref([])
+const batchDeleting = ref(false)
+const semanticQuery = ref('')
+const semanticTopK = ref(4)
+const semanticLoading = ref(false)
+const semanticResults = ref([])
+const semanticSearched = ref(false)
 
 const filters = reactive({
   q: '',
@@ -357,6 +447,10 @@ const typeBars = computed(() => {
   }))
 })
 
+const allRecordsSelected = computed(() => {
+  return records.value.length > 0 && selectedRecordIds.value.length === records.value.length
+})
+
 const shortId = (id) => {
   if (!id) return ''
   return id.length > 14 ? `${id.slice(0, 8)}...${id.slice(-4)}` : id
@@ -375,6 +469,16 @@ const prettyMetadata = (metadata) => {
   } catch (error) {
     return String(metadata || '')
   }
+}
+
+const formatSimilarity = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
+  return Number(value).toFixed(4)
+}
+
+const formatScore = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
+  return Number(value).toFixed(4)
 }
 
 const triggerFileInput = () => {
@@ -493,6 +597,60 @@ const selectRecord = (record) => {
   selectedRecord.value = record
 }
 
+const isRecordSelected = (recordId) => {
+  return selectedRecordIds.value.includes(recordId)
+}
+
+const toggleRecordSelection = (recordId) => {
+  if (isRecordSelected(recordId)) {
+    selectedRecordIds.value = selectedRecordIds.value.filter((id) => id !== recordId)
+    return
+  }
+
+  selectedRecordIds.value = [...selectedRecordIds.value, recordId]
+}
+
+const toggleSelectAll = () => {
+  if (allRecordsSelected.value) {
+    clearSelectedRecords()
+    return
+  }
+
+  selectedRecordIds.value = records.value.map((record) => record.id)
+}
+
+const clearSelectedRecords = () => {
+  selectedRecordIds.value = []
+}
+
+const runSemanticSearch = async () => {
+  const query = semanticQuery.value.trim()
+  if (!query) {
+    alert('请输入检索内容')
+    return
+  }
+
+  semanticLoading.value = true
+  semanticSearched.value = true
+  try {
+    const safeTopK = Math.min(10, Math.max(1, Number(semanticTopK.value) || 4))
+    semanticTopK.value = safeTopK
+    const response = await axios.get('/api/knowledge/search', {
+      params: {
+        q: query,
+        top_k: safeTopK
+      }
+    })
+    semanticResults.value = response.data?.results || []
+  } catch (error) {
+    console.error('语义检索失败:', error)
+    semanticResults.value = []
+    alert('语义检索失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    semanticLoading.value = false
+  }
+}
+
 const loadRecords = async () => {
   loading.value = true
   try {
@@ -513,6 +671,7 @@ const loadRecords = async () => {
       const refreshed = records.value.find((record) => record.id === selectedRecord.value.id)
       selectedRecord.value = refreshed || records.value[0]
     }
+    selectedRecordIds.value = selectedRecordIds.value.filter((id) => records.value.some((record) => record.id === id))
   } catch (error) {
     console.error('加载知识记录失败:', error)
     alert('加载知识记录失败: ' + (error.response?.data?.message || error.message))
@@ -571,11 +730,39 @@ const removeRecord = async (record) => {
     if (selectedRecord.value?.id === record.id) {
       selectedRecord.value = null
     }
+    selectedRecordIds.value = selectedRecordIds.value.filter((id) => id !== record.id)
     await reloadAll()
     alert('删除成功')
   } catch (error) {
     console.error('删除知识记录失败:', error)
     alert('删除失败: ' + (error.response?.data?.detail || error.response?.data?.message || error.message))
+  }
+}
+
+const handleBatchDeleteSelectedRecords = async () => {
+  if (selectedRecordIds.value.length === 0) {
+    alert('请先勾选要删除的记录')
+    return
+  }
+
+  if (!confirm(`确认删除已选中的 ${selectedRecordIds.value.length} 条记录吗？`)) return
+
+  batchDeleting.value = true
+  try {
+    const response = await axios.post('/api/knowledge/records/batch-delete', { ids: selectedRecordIds.value })
+    const removed = response.data?.removed ?? 0
+    const recordsDeleted = response.data?.records || []
+    clearSelectedRecords()
+    await reloadAll()
+    alert('删除成功')
+    if (recordsDeleted.length > 0) {
+      console.log('批量删除记录:', recordsDeleted)
+    }
+  } catch (error) {
+    console.error('批量删除失败:', error)
+    alert('批量删除失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    batchDeleting.value = false
   }
 }
 
@@ -1028,6 +1215,130 @@ onMounted(reloadAll)
   align-items: center;
 }
 
+.batch-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+  flex-wrap: wrap;
+}
+
+.semantic-search-panel {
+  background: white;
+  border-radius: 18px;
+  padding: 1.1rem;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+}
+
+.semantic-search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.semantic-search-form textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  resize: vertical;
+}
+
+.semantic-search-form textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.semantic-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.semantic-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: #334155;
+  font-size: 0.92rem;
+}
+
+.semantic-actions input {
+  width: 120px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+}
+
+.semantic-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.semantic-result-card {
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #f8fbff;
+}
+
+.semantic-result-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.semantic-score {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.semantic-meta {
+  margin-top: 0.45rem;
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.semantic-content {
+  margin-top: 0.55rem;
+  color: #0f172a;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.batch-toolbar-group {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.batch-summary {
+  font-weight: 700;
+  color: #9a3412;
+}
+
+.batch-toolbar-actions {
+  display: flex;
+  align-items: center;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
@@ -1050,6 +1361,16 @@ onMounted(reloadAll)
   border-bottom: 1px solid #e2e8f0;
   text-align: left;
   vertical-align: top;
+}
+
+.select-col {
+  width: 44px;
+}
+
+.select-col input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
 }
 
 .records-table th {
@@ -1083,6 +1404,7 @@ onMounted(reloadAll)
 .mini-btn,
 .btn-primary,
 .btn-secondary,
+.btn-danger,
 .btn-ghost,
 .icon-btn {
   border: none;
@@ -1094,6 +1416,7 @@ onMounted(reloadAll)
 .mini-btn,
 .btn-primary,
 .btn-secondary,
+.btn-danger,
 .btn-ghost {
   padding: 0.55rem 0.95rem;
   transition: transform 0.18s, opacity 0.18s, background-color 0.18s;
@@ -1102,6 +1425,7 @@ onMounted(reloadAll)
 .mini-btn:hover,
 .btn-primary:hover,
 .btn-secondary:hover,
+.btn-danger:hover,
 .btn-ghost:hover,
 .icon-btn:hover {
   transform: translateY(-1px);
@@ -1115,6 +1439,11 @@ onMounted(reloadAll)
 .btn-secondary {
   color: #0f172a;
   background: #e2e8f0;
+}
+
+.btn-danger {
+  color: white;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
 }
 
 .btn-ghost {

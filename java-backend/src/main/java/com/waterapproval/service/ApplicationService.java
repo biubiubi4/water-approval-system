@@ -55,8 +55,10 @@ public class ApplicationService {
         application.setLocation(request.getLocation());
         application.setApplicationDate(LocalDateTime.now());
         application.setStatus("PENDING");
-        application.setFiles(saveFiles(files));
-        application.setAttachments(new ArrayList<>(application.getFiles()));
+        List<String> originalFileNames = extractOriginalFileNames(files);
+        List<String> storedFileNames = saveFiles(files);
+        application.setFiles(storedFileNames);
+        application.setAttachments(originalFileNames.isEmpty() ? new ArrayList<>(storedFileNames) : originalFileNames);
         application = repository.save(application);
         return toResponse(application);
     }
@@ -98,9 +100,10 @@ public class ApplicationService {
             } catch (Exception ex) {
                 System.err.println("通知AI服务删除知识失败: " + ex.getMessage());
             }
+            List<String> originalFileNames = extractOriginalFileNames(files);
             List<String> saved = saveFiles(files);
             application.setFiles(saved);
-            application.setAttachments(new ArrayList<>(saved));
+            application.setAttachments(originalFileNames.isEmpty() ? new ArrayList<>(saved) : originalFileNames);
         }
 
         application = repository.save(application);
@@ -125,7 +128,7 @@ public class ApplicationService {
         if (fileNames == null || fileNames.isEmpty()) {
             return;
         }
-        Path uploadDir = Paths.get("uploads");
+        Path uploadDir = getUploadDir();
         for (String fileName : fileNames) {
             try {
                 Path target = uploadDir.resolve(fileName);
@@ -164,7 +167,9 @@ public class ApplicationService {
         payload.put("project_name", application.getProjectName());
         payload.put("water_use", application.getWaterUse());
         payload.put("location", application.getLocation());
-        payload.put("attachments", application.getFiles());
+        payload.put("attachments", application.getAttachments());
+        payload.put("file_names", application.getFiles());
+        payload.put("file_paths", buildStoredFilePaths(application.getFiles()));
         return payload;
     }
 
@@ -173,7 +178,7 @@ public class ApplicationService {
             return new ArrayList<>();
         }
 
-        Path uploadDir = Paths.get("uploads");
+        Path uploadDir = getUploadDir();
         try {
             if (!Files.exists(uploadDir)) {
                 Files.createDirectories(uploadDir);
@@ -201,6 +206,38 @@ public class ApplicationService {
             }
         }
         return savedFileNames;
+    }
+
+    private List<String> extractOriginalFileNames(List<MultipartFile> files) {
+        List<String> originalNames = new ArrayList<>();
+        if (files == null || files.isEmpty()) {
+            return originalNames;
+        }
+
+        for (MultipartFile file : files) {
+            String originalFileName = file.getOriginalFilename();
+            if (originalFileName != null && !originalFileName.isBlank()) {
+                originalNames.add(originalFileName);
+            }
+        }
+        return originalNames;
+    }
+
+    private List<String> buildStoredFilePaths(List<String> fileNames) {
+        List<String> filePaths = new ArrayList<>();
+        if (fileNames == null || fileNames.isEmpty()) {
+            return filePaths;
+        }
+
+        Path uploadDir = getUploadDir();
+        for (String fileName : fileNames) {
+            filePaths.add(uploadDir.resolve(fileName).toAbsolutePath().normalize().toString());
+        }
+        return filePaths;
+    }
+
+    private Path getUploadDir() {
+        return Paths.get(System.getProperty("user.dir"), "uploads").toAbsolutePath().normalize();
     }
 
     private void seedData() {

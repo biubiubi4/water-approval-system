@@ -10,10 +10,10 @@
       <div class="row"><strong>位置:</strong> {{ application.location }}</div>
       <div class="row"><strong>申请日期:</strong> {{ formatDate(application.applicationDate) }}</div>
 
-      <div class="attachments" v-if="application.files && application.files.length">
+      <div class="attachments" v-if="displayAttachments.length">
         <h3>附件</h3>
         <ul>
-          <li v-for="(f, idx) in application.files" :key="idx">{{ f }}</li>
+          <li v-for="(f, idx) in displayAttachments" :key="idx">{{ f }}</li>
         </ul>
       </div>
     </div>
@@ -28,6 +28,16 @@ import { computed } from 'vue'
 
 const props = defineProps({
   application: { type: Object, default: null }
+})
+
+const displayAttachments = computed(() => {
+  const attachments = props.application?.attachments
+  if (Array.isArray(attachments) && attachments.length) {
+    return attachments
+  }
+
+  const files = props.application?.files
+  return Array.isArray(files) ? files : []
 })
 
 const maskId = (id) => {
