@@ -6,7 +6,7 @@ except ImportError:
     from langchain_community.vectorstores import Chroma
 
 from app.config import settings
-from app.embeddings import HashEmbeddings
+from app.embeddings import get_embeddings
 
 
 def init_vector_store() -> Chroma:
@@ -14,7 +14,7 @@ def init_vector_store() -> Chroma:
     settings.chroma_dir.mkdir(parents=True, exist_ok=True)
     return Chroma(
         collection_name=settings.default_collection,
-        embedding_function=HashEmbeddings(),
+        embedding_function=get_embeddings(),
         persist_directory=str(settings.chroma_dir),
     )
 

@@ -33,6 +33,11 @@ class ReviewRequest(BaseModel):
     application: Dict[str, Any] = Field(default_factory=dict, description="申请数据")
 
 
+class CompletenessRequest(BaseModel):
+    application: Dict[str, Any] = Field(default_factory=dict, description="申请数据")
+    materials: List[str] = Field(default_factory=list, description="申请材料名称列表")
+
+
 class KnowledgeRecordIn(BaseModel):
     content: str = Field(..., description="知识内容")
     source: str = Field(default="manual", description="知识来源")
@@ -182,8 +187,11 @@ def api_review(payload: ReviewRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/check-completeness")
-def api_check_completeness(payload: ReviewRequest) -> Dict[str, Any]:
-    return execute_tool("check_completeness", {"application": payload.application})
+def api_check_completeness(payload: CompletenessRequest) -> Dict[str, Any]:
+    return execute_tool(
+        "check_completeness",
+        {"application": payload.application, "materials": payload.materials},
+    )
 
 
 if __name__ == "__main__":

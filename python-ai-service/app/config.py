@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     default_collection: str = "water_approval_knowledge"
     port: int = 8000
 
+    # Embedding backend configuration
+    embedding_provider: str = "sentence_transformers"
+    embedding_model_name: str = "BAAI/bge-small-zh-v1.5"
+    embedding_fallback_provider: str = "hash"
+
     # External AI integration (optional)
     external_ai_enabled: bool = False
     # API key/token for DashScope compatible OpenAI API (or other compatible providers)

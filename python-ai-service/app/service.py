@@ -50,6 +50,21 @@ def _format_record(record_id: str, content: str | None, metadata: Dict[str, Any]
     }
 
 
+def _format_parsed_document(document: Document, record_id: str | None = None) -> Dict[str, Any]:
+    metadata = dict(document.metadata or {})
+    return {
+        "id": record_id,
+        "content": document.page_content,
+        "preview": document.page_content[:200],
+        "source": metadata.get("source") or metadata.get("file_path") or "manual",
+        "file_path": metadata.get("file_path"),
+        "document_name": metadata.get("document_name") or metadata.get("source"),
+        "chunk_index": metadata.get("chunk_index") or metadata.get("chunk"),
+        "page": metadata.get("page"),
+        "metadata": metadata,
+    }
+
+
 def _load_records() -> List[Dict[str, Any]]:
     raw = _collection().get(include=["documents", "metadatas"])
     ids = raw.get("ids") or []
@@ -131,19 +146,56 @@ def add_knowledge_files(paths: List[Path]) -> Dict[str, Any]:
     if not paths:
         return {"status": "no files", "message": "没有提供文件"}
 
-    documents = process_documents(paths)
+    failed_files: List[Dict[str, Any]] = []
+    valid_paths: List[Path] = []
+    for file_path in paths:
+        if not file_path.exists():
+            failed_files.append({"file": file_path.name, "reason": "文件不存在"})
+            continue
+        valid_paths.append(file_path)
+
+    if not valid_paths:
+        return {"status": "error", "message": "没有可解析的文件", "failed_files": failed_files}
+
+    documents = process_documents(valid_paths)
 
     if not documents:
-        return {"status": "error", "message": "未能从文件中提取内容"}
+        return {
+            "status": "error",
+            "message": "未能从文件中提取内容",
+            "failed_files": failed_files + [
+                {"file": file_path.name, "reason": "文件内容为空、格式不受支持或缺少可提取文本"}
+                for file_path in valid_paths
+            ],
+        }
 
     inserted_ids = _store_documents(documents)
+    parsed_documents = [
+        _format_parsed_document(document, inserted_ids[index] if index < len(inserted_ids) else None)
+        for index, document in enumerate(documents)
+    ]
+
+    file_summaries: List[Dict[str, Any]] = []
+    for file_path in paths:
+        related_chunks = [item for item in parsed_documents if item.get("file_path") == str(file_path)]
+        file_summaries.append(
+            {
+                "file_name": file_path.name,
+                "file_path": str(file_path),
+                "chunk_count": len(related_chunks),
+                "chunks": related_chunks,
+            }
+        )
 
     return {
         "status": "ok",
         "message": f"成功添加 {len(inserted_ids)} 条知识片段",
         "added": len(inserted_ids),
         "ids": inserted_ids,
-        "files": [p.name for p in paths],
+        "files": [p.name for p in valid_paths],
+        "failed_files": failed_files,
+        "parsed_documents": parsed_documents,
+        "file_summaries": file_summaries,
     }
 
 

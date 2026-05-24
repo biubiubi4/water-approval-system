@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from app.tools import knowledge_search, check_completeness
@@ -18,7 +18,8 @@ class KnowledgeSearchArgs(BaseModel):
 
 
 class CheckCompletenessArgs(BaseModel):
-    application: Dict[str, Any] = Field(..., description="申请材料数据")
+    application: Optional[Dict[str, Any]] = Field(default=None, description="申请材料数据")
+    materials: List[str] = Field(default_factory=list, description="申请材料名称列表")
 
 
 # MCP工具定义
@@ -46,8 +47,6 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
             )
         }
     elif tool_name == "check_completeness":
-        return check_completeness(
-            application=args.get("application", {})
-        )
+        return check_completeness(application=args.get("application"), materials=args.get("materials", []))
     else:
         raise ValueError(f"未知工具: {tool_name}")

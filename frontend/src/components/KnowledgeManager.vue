@@ -14,6 +14,96 @@
       </div>
     </section>
 
+    <section class="parse-workbench">
+      <div class="upload-panel">
+        <div class="panel-head">
+          <div>
+            <h3>文件上传与解析</h3>
+            <p class="panel-subtitle">先选择文件，再点击解析，系统会自动完成分块并写入向量库。</p>
+          </div>
+          <div class="panel-actions">
+            <button class="btn-secondary" @click="triggerFileInput" :disabled="parseLoading">选择文件</button>
+            <button class="btn-primary" @click="handleParseFiles" :disabled="parseLoading || selectedFiles.length === 0">
+              {{ parseLoading ? '解析中...' : '开始解析' }}
+            </button>
+          </div>
+        </div>
+
+        <input
+          ref="fileInput"
+          type="file"
+          multiple
+          accept=".pdf,.doc,.docx,.txt,.md,.csv,.html,.htm,.json"
+          class="hidden-input"
+          @change="handleFileSelect"
+        />
+
+        <div class="drop-zone" @click="triggerFileInput" @dragover.prevent @drop.prevent="handleDrop">
+          <div v-if="selectedFiles.length === 0" class="drop-empty">
+            <strong>点击或拖拽文件到此处</strong>
+            <span>支持 PDF、Word、TXT、CSV、HTML、JSON</span>
+          </div>
+          <div v-else class="drop-selected">
+            <div class="selected-head">
+              <strong>已选择 {{ selectedFiles.length }} 个文件</strong>
+              <span>点击“开始解析”后会自动分块并入库</span>
+            </div>
+            <ul class="selected-file-list">
+              <li v-for="(file, index) in selectedFiles" :key="`${file.name}-${index}`">
+                <span>{{ file.name }}</span>
+                <button type="button" class="text-btn danger" @click.stop="removeSelectedFile(index)">移除</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div v-if="parseMessage" :class="['inline-message', parseMessageType]">
+          {{ parseMessage }}
+        </div>
+      </div>
+
+      <div v-if="parseResult" class="parse-result-panel">
+        <div class="panel-head compact">
+          <h3>解析结果</h3>
+          <span>{{ parseResult.added || 0 }} 个分块</span>
+        </div>
+
+        <div class="parse-summary-grid">
+          <article v-for="summary in parseResult.file_summaries || []" :key="summary.file_path" class="parse-summary-card">
+            <strong>{{ summary.file_name }}</strong>
+            <span>{{ summary.chunk_count }} 个分块</span>
+          </article>
+        </div>
+
+        <div v-if="(parseResult.failed_files || []).length > 0" class="failed-files">
+          <h4>未成功解析的文件</h4>
+          <ul>
+            <li v-for="item in parseResult.failed_files" :key="item.file">
+              <strong>{{ item.file }}</strong>
+              <span>{{ item.reason }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="chunk-list" v-if="(parseResult.parsed_documents || []).length > 0">
+          <article v-for="chunk in parseResult.parsed_documents" :key="chunk.id || `${chunk.file_path}-${chunk.chunk_index}`" class="chunk-card">
+            <div class="chunk-card-head">
+              <div>
+                <strong>{{ chunk.document_name || chunk.source }}</strong>
+                <p>{{ chunk.source }}</p>
+              </div>
+              <span>分块 {{ chunk.chunk_index || '-' }}</span>
+            </div>
+            <p class="chunk-preview">{{ chunk.preview || chunk.content }}</p>
+            <details>
+              <summary>查看完整内容与元数据</summary>
+              <pre>{{ prettyMetadata(chunk) }}</pre>
+            </details>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <section class="summary-grid" v-if="stats">
       <article class="summary-card accent-blue">
         <span class="summary-label">总记录数</span>
@@ -217,6 +307,12 @@ import axios from 'axios'
 
 const loading = ref(false)
 const submitting = ref(false)
+const parseLoading = ref(false)
+const parseMessage = ref('')
+const parseMessageType = ref('')
+const selectedFiles = ref([])
+const fileInput = ref(null)
+const parseResult = ref(null)
 const stats = ref(null)
 const records = ref([])
 const selectedRecord = ref(null)
@@ -278,6 +374,76 @@ const prettyMetadata = (metadata) => {
     return JSON.stringify(metadata || {}, null, 2)
   } catch (error) {
     return String(metadata || '')
+  }
+}
+
+const triggerFileInput = () => {
+  fileInput.value?.click()
+}
+
+const handleFileSelect = (event) => {
+  const pickedFiles = Array.from(event.target.files || [])
+  if (pickedFiles.length === 0) return
+  selectedFiles.value = [...selectedFiles.value, ...pickedFiles]
+  event.target.value = ''
+}
+
+const handleDrop = (event) => {
+  const droppedFiles = Array.from(event.dataTransfer.files || [])
+  if (droppedFiles.length === 0) return
+  selectedFiles.value = [...selectedFiles.value, ...droppedFiles]
+}
+
+const removeSelectedFile = (index) => {
+  selectedFiles.value.splice(index, 1)
+}
+
+const showParseMessage = (message, type = 'success') => {
+  parseMessage.value = message
+  parseMessageType.value = type
+}
+
+const clearParseMessage = () => {
+  parseMessage.value = ''
+  parseMessageType.value = ''
+}
+
+const handleParseFiles = async () => {
+  if (selectedFiles.value.length === 0) {
+    showParseMessage('请先选择需要解析的文件', 'error')
+    return
+  }
+
+  parseLoading.value = true
+  clearParseMessage()
+
+  try {
+    const formData = new FormData()
+    selectedFiles.value.forEach((file) => {
+      formData.append('files', file)
+    })
+
+    const response = await axios.post('/api/knowledge/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+
+    parseResult.value = response.data || null
+    const failedFiles = response.data?.failed_files || []
+    if (failedFiles.length > 0) {
+      showParseMessage(`${response.data?.message || '文件解析完成'}，部分文件未成功解析`, 'error')
+    } else {
+      showParseMessage(response.data?.message || '文件解析完成', 'success')
+    }
+    selectedFiles.value = []
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+    await reloadAll()
+  } catch (error) {
+    console.error('文件解析失败:', error)
+    showParseMessage('解析失败: ' + (error.response?.data?.message || error.message), 'error')
+  } finally {
+    parseLoading.value = false
   }
 }
 
@@ -458,6 +624,242 @@ onMounted(reloadAll)
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.parse-workbench {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 1rem;
+}
+
+.upload-panel,
+.parse-result-panel {
+  background: white;
+  border-radius: 18px;
+  padding: 1.1rem;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+}
+
+.panel-subtitle {
+  margin-top: 0.35rem;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.drop-zone {
+  margin-top: 1rem;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  padding: 1rem;
+  cursor: pointer;
+}
+
+.drop-empty {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: #475569;
+}
+
+.drop-empty strong {
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.drop-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.selected-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.selected-head span {
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.selected-file-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.selected-file-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.text-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.text-btn.danger {
+  color: #dc2626;
+}
+
+.inline-message {
+  margin-top: 0.9rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+.inline-message.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.inline-message.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.parse-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+}
+
+.parse-summary-card {
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  background: #eff6ff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.parse-summary-card span {
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.failed-files {
+  margin-top: 1rem;
+  padding: 0.9rem;
+  border-radius: 14px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.failed-files h4 {
+  margin-bottom: 0.65rem;
+  color: #9a3412;
+}
+
+.failed-files ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.failed-files li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  background: white;
+}
+
+.failed-files li span {
+  color: #7c2d12;
+  font-size: 0.9rem;
+}
+
+.chunk-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-height: 620px;
+  overflow: auto;
+}
+
+.chunk-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 0.95rem;
+  background: #fff;
+}
+
+.chunk-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: flex-start;
+  margin-bottom: 0.6rem;
+}
+
+.chunk-card-head p {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.chunk-card-head span {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.chunk-preview {
+  color: #0f172a;
+  line-height: 1.7;
+}
+
+.chunk-card details {
+  margin-top: 0.75rem;
+}
+
+.chunk-card summary {
+  cursor: pointer;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.chunk-card pre {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .summary-grid {

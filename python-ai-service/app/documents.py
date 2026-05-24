@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Sequence
 
 try:
     from langchain.schema import Document
@@ -14,9 +14,33 @@ except ImportError:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 try:
-    from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
+    from langchain_community.document_loaders import (
+        CSVLoader,
+        Docx2txtLoader,
+        JSONLoader,
+        PyPDFLoader,
+        TextLoader,
+        UnstructuredFileLoader,
+        UnstructuredHTMLLoader,
+        UnstructuredURLLoader,
+        WebBaseLoader,
+    )
 except ImportError:
     from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
+    CSVLoader = None  # type: ignore[assignment]
+    JSONLoader = None  # type: ignore[assignment]
+    UnstructuredFileLoader = None  # type: ignore[assignment]
+    UnstructuredHTMLLoader = None  # type: ignore[assignment]
+    UnstructuredURLLoader = None  # type: ignore[assignment]
+    WebBaseLoader = None  # type: ignore[assignment]
+
+
+def _load_documents_from_loader(loader: object) -> List[Document]:
+    try:
+        return loader.load()  # type: ignore[attr-defined]
+    except Exception as error:
+        print(f"文档加载失败: {error}")
+        return []
 
 
 def split_text(
@@ -71,6 +95,66 @@ def load_txt(file_path: Path) -> List[Document]:
             return []
 
 
+def load_csv(file_path: Path) -> List[Document]:
+    if CSVLoader is None:
+        return load_txt(file_path)
+    try:
+        loader = CSVLoader(str(file_path), encoding="utf-8")
+        return loader.load()
+    except Exception as error:
+        print(f"CSV加载失败 {file_path}: {error}")
+        return load_txt(file_path)
+
+
+def load_html(file_path: Path) -> List[Document]:
+    if UnstructuredHTMLLoader is None:
+        return load_txt(file_path)
+    try:
+        loader = UnstructuredHTMLLoader(str(file_path))
+        return loader.load()
+    except Exception as error:
+        print(f"HTML加载失败 {file_path}: {error}")
+        return load_txt(file_path)
+
+
+def load_json(file_path: Path) -> List[Document]:
+    if JSONLoader is None:
+        return load_txt(file_path)
+    try:
+        loader = JSONLoader(str(file_path), jq_schema=".", text_content=False)
+        return loader.load()
+    except Exception as error:
+        print(f"JSON加载失败 {file_path}: {error}")
+        return load_txt(file_path)
+
+
+def load_generic_file(file_path: Path) -> List[Document]:
+    if UnstructuredFileLoader is None:
+        print(f"不支持的文件类型或未安装 unstructured 依赖: {file_path.suffix}")
+        return []
+    try:
+        loader = UnstructuredFileLoader(str(file_path))
+        return loader.load()
+    except Exception as error:
+        print(f"通用文件加载失败 {file_path}: {error}")
+        return load_txt(file_path)
+
+
+def load_url(url: str) -> List[Document]:
+    loaders: Sequence[object] = []
+    if UnstructuredURLLoader is not None:
+        loaders = [UnstructuredURLLoader([url])]
+    elif WebBaseLoader is not None:
+        loaders = [WebBaseLoader(url)]
+
+    for loader in loaders:
+        documents = _load_documents_from_loader(loader)
+        if documents:
+            return documents
+
+    return []
+
+
 def load_document(file_path: Path) -> List[Document]:
     """根据文件类型加载文档"""
     suffix = file_path.suffix.lower()
@@ -81,9 +165,14 @@ def load_document(file_path: Path) -> List[Document]:
         return load_docx(file_path)
     elif suffix in [".txt", ".md"]:
         return load_txt(file_path)
+    elif suffix == ".csv":
+        return load_csv(file_path)
+    elif suffix in [".html", ".htm"]:
+        return load_html(file_path)
+    elif suffix == ".json":
+        return load_json(file_path)
     else:
-        print(f"不支持的文件类型: {suffix}")
-        return []
+        return load_generic_file(file_path)
 
 
 def process_documents(
@@ -114,9 +203,11 @@ def process_documents(
         
         split_docs = text_splitter.split_documents(docs)
         
-        for doc in split_docs:
+        for chunk_index, doc in enumerate(split_docs, 1):
             doc.metadata["source"] = file_path.name
             doc.metadata["file_path"] = str(file_path)
+            doc.metadata["chunk_index"] = chunk_index
+            doc.metadata.setdefault("document_name", file_path.stem)
         
         all_documents.extend(split_docs)
     

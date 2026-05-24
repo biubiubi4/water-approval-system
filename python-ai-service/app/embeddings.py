@@ -3,10 +3,55 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from functools import lru_cache
 from collections import Counter
 from typing import List
 
 from langchain_core.embeddings import Embeddings
+from app.config import settings
+
+
+class SentenceTransformerEmbeddings(Embeddings):
+    """基于 sentence-transformers 的本地嵌入模型。"""
+
+    def __init__(self, model_name: str):
+        self.model_name = model_name
+        self.model = None
+
+    def _get_model(self):
+        if self.model is not None:
+            return self.model
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as error:
+            print(f"sentence-transformers 不可用，回退到哈希嵌入: {error}")
+            self.model = HashEmbeddings()
+            return self.model
+
+        try:
+            self.model = SentenceTransformer(self.model_name)
+        except Exception as error:
+            print(f"加载本地嵌入模型失败，回退到哈希嵌入: {error}")
+            self.model = HashEmbeddings()
+
+        return self.model
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        model = self._get_model()
+        if isinstance(model, HashEmbeddings):
+            return model.embed_documents(texts)
+
+        vectors = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+        return vectors.tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        model = self._get_model()
+        if isinstance(model, HashEmbeddings):
+            return model.embed_query(text)
+
+        vector = model.encode([text], normalize_embeddings=True, show_progress_bar=False)
+        return vector[0].tolist()
 
 
 class HashEmbeddings(Embeddings):
@@ -38,3 +83,12 @@ class HashEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> List[float]:
         return self._embed(text)
+
+
+@lru_cache(maxsize=1)
+def get_embeddings() -> Embeddings:
+    """根据配置创建嵌入模型，失败时回退到哈希向量。"""
+    if settings.embedding_provider == "sentence_transformers":
+        return SentenceTransformerEmbeddings(settings.embedding_model_name)
+
+    return HashEmbeddings()
