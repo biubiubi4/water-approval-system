@@ -3,11 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.service import add_knowledge_files, add_knowledge_text
+from app.service import (
+    add_knowledge_files,
+    add_knowledge_text,
+    create_knowledge_record,
+    delete_knowledge_record,
+    get_knowledge_record,
+    list_knowledge_records,
+    update_knowledge_record,
+)
 from app.agent import get_agent
 from app.mcp_tools import MCP_TOOLS, execute_tool
 from app.vector_store import init_vector_store, vector_store
@@ -23,6 +31,18 @@ class KnowledgeTextIn(BaseModel):
 
 class ReviewRequest(BaseModel):
     application: Dict[str, Any] = Field(default_factory=dict, description="申请数据")
+
+
+class KnowledgeRecordIn(BaseModel):
+    content: str = Field(..., description="知识内容")
+    source: str = Field(default="manual", description="知识来源")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="附加元数据")
+
+
+class KnowledgeRecordUpdateIn(BaseModel):
+    content: str = Field(..., description="知识内容")
+    source: str = Field(default="manual", description="知识来源")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="附加元数据")
 
 
 @app.get("/")
@@ -87,6 +107,54 @@ async def api_upload_knowledge(files: List[UploadFile] | None = File(default=Non
 def api_search_knowledge(q: str, top_k: int = 4) -> Dict[str, Any]:
     from app.tools import knowledge_search
     return {"query": q, "results": knowledge_search(q, top_k=top_k)}
+
+
+@app.get("/api/knowledge/stats")
+def api_knowledge_stats() -> Dict[str, Any]:
+    return list_knowledge_records()["summary"]
+
+
+@app.get("/api/knowledge/records")
+def api_list_knowledge_records(
+    q: str | None = None,
+    source: str | None = None,
+    record_type: str | None = None,
+) -> Dict[str, Any]:
+    return list_knowledge_records(query=q, source=source, record_type=record_type)
+
+
+@app.get("/api/knowledge/records/{record_id}")
+def api_get_knowledge_record(record_id: str) -> Dict[str, Any]:
+    try:
+        return get_knowledge_record(record_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/api/knowledge/records")
+def api_create_knowledge_record(payload: KnowledgeRecordIn) -> Dict[str, Any]:
+    return create_knowledge_record(payload.content, source=payload.source, metadata=payload.metadata)
+
+
+@app.put("/api/knowledge/records/{record_id}")
+def api_update_knowledge_record(record_id: str, payload: KnowledgeRecordUpdateIn) -> Dict[str, Any]:
+    try:
+        return update_knowledge_record(
+            record_id,
+            payload.content,
+            source=payload.source,
+            metadata=payload.metadata,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.delete("/api/knowledge/records/{record_id}")
+def api_delete_knowledge_record(record_id: str) -> Dict[str, Any]:
+    try:
+        return delete_knowledge_record(record_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/api/knowledge/delete")

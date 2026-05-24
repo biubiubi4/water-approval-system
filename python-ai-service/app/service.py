@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import uuid
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -8,26 +11,138 @@ try:
 except ImportError:
     from langchain_core.documents import Document
 
-from app.vector_store import vector_store
 from app.documents import process_documents, split_text
+from app.vector_store import vector_store
+
+
+def _collection():
+    return vector_store._collection
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _normalize_metadata(metadata: Dict[str, Any] | None, source: str | None = None) -> Dict[str, Any]:
+    payload = dict(metadata or {})
+    if source:
+        payload["source"] = source
+    payload.setdefault("source", "manual")
+    payload.setdefault("type", payload.get("type") or "manual")
+    payload.setdefault("created_at", _now_iso())
+    payload["updated_at"] = _now_iso()
+    return payload
+
+
+def _format_record(record_id: str, content: str | None, metadata: Dict[str, Any] | None) -> Dict[str, Any]:
+    metadata = dict(metadata or {})
+    content = content or ""
+    return {
+        "id": record_id,
+        "content": content,
+        "preview": content[:160],
+        "source": metadata.get("source") or metadata.get("file_path") or "manual",
+        "type": metadata.get("type") or "manual",
+        "chunk": metadata.get("chunk"),
+        "metadata": metadata,
+        "created_at": metadata.get("created_at"),
+        "updated_at": metadata.get("updated_at"),
+    }
+
+
+def _load_records() -> List[Dict[str, Any]]:
+    raw = _collection().get(include=["documents", "metadatas"])
+    ids = raw.get("ids") or []
+    documents = raw.get("documents") or []
+    metadatas = raw.get("metadatas") or []
+
+    records: List[Dict[str, Any]] = []
+    for index, record_id in enumerate(ids):
+        content = documents[index] if index < len(documents) else ""
+        metadata = metadatas[index] if index < len(metadatas) else {}
+        records.append(_format_record(record_id, content, metadata))
+    return records
+
+
+def _filter_records(
+    query: str | None = None,
+    source: str | None = None,
+    record_type: str | None = None,
+) -> List[Dict[str, Any]]:
+    records = _load_records()
+
+    if query:
+        needle = query.lower().strip()
+        records = [
+            record
+            for record in records
+            if needle in record["content"].lower()
+            or needle in record["source"].lower()
+            or needle in record["type"].lower()
+            or needle in str(record["metadata"]).lower()
+        ]
+
+    if source:
+        needle = source.lower().strip()
+        records = [record for record in records if needle in record["source"].lower()]
+
+    if record_type:
+        needle = record_type.lower().strip()
+        records = [record for record in records if needle in record["type"].lower()]
+
+    return records
+
+
+def _build_summary(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    source_counter = Counter(record["source"] or "manual" for record in records)
+    type_counter = Counter(record["type"] or "manual" for record in records)
+
+    return {
+        "total": len(records),
+        "unique_sources": len(source_counter),
+        "unique_types": len(type_counter),
+        "sources": [{"name": name, "count": count} for name, count in source_counter.most_common()],
+        "types": [{"name": name, "count": count} for name, count in type_counter.most_common()],
+        "latest": records[:10],
+    }
+
+
+def _store_documents(documents: List[Document]) -> List[str]:
+    if not documents:
+        return []
+
+    ids: List[str] = []
+    texts: List[str] = []
+    metadatas: List[Dict[str, Any]] = []
+
+    for document in documents:
+        record_id = str(uuid.uuid4())
+        metadata = _normalize_metadata(document.metadata, document.metadata.get("source") if document.metadata else None)
+        ids.append(record_id)
+        texts.append(document.page_content)
+        metadatas.append(metadata)
+
+    vector_store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+    return ids
 
 
 def add_knowledge_files(paths: List[Path]) -> Dict[str, Any]:
     """添加文件到知识库"""
     if not paths:
         return {"status": "no files", "message": "没有提供文件"}
-    
+
     documents = process_documents(paths)
-    
+
     if not documents:
         return {"status": "error", "message": "未能从文件中提取内容"}
-    
-    vector_store.add_documents(documents)
-    
+
+    inserted_ids = _store_documents(documents)
+
     return {
         "status": "ok",
-        "message": f"成功添加 {len(documents)} 条知识片段",
-        "added": len(documents),
+        "message": f"成功添加 {len(inserted_ids)} 条知识片段",
+        "added": len(inserted_ids),
+        "ids": inserted_ids,
         "files": [p.name for p in paths],
     }
 
@@ -40,34 +155,108 @@ def add_knowledge_text(
     """添加文本到知识库"""
     if not text.strip():
         return {"status": "error", "message": "文本内容不能为空"}
-    
+
     chunks = split_text(text)
-    metadata = metadata or {}
-    metadata["source"] = source
-    
+    payload = dict(metadata or {})
+    payload["source"] = source
+
     documents: List[Document] = []
-    for i, chunk in enumerate(chunks):
-        doc = Document(
-            page_content=chunk,
-            metadata={
-                **metadata,
-                "chunk": i + 1,
-            }
+    for index, chunk in enumerate(chunks):
+        documents.append(
+            Document(
+                page_content=chunk,
+                metadata={
+                    **payload,
+                    "chunk": index + 1,
+                },
+            )
         )
-        documents.append(doc)
-    
-    vector_store.add_documents(documents)
-    
+
+    inserted_ids = _store_documents(documents)
+
     return {
         "status": "ok",
-        "message": f"成功添加 {len(documents)} 条知识片段",
-        "added": len(documents),
+        "message": f"成功添加 {len(inserted_ids)} 条知识片段",
+        "added": len(inserted_ids),
+        "ids": inserted_ids,
+    }
+
+
+def list_knowledge_records(
+    query: str | None = None,
+    source: str | None = None,
+    record_type: str | None = None,
+) -> Dict[str, Any]:
+    records = _filter_records(query=query, source=source, record_type=record_type)
+    return {
+        "records": records,
+        "total": len(records),
+        "summary": _build_summary(records),
+    }
+
+
+def get_knowledge_record(record_id: str) -> Dict[str, Any]:
+    raw = _collection().get(ids=[record_id], include=["documents", "metadatas"])
+    ids = raw.get("ids") or []
+    if not ids:
+        raise ValueError(f"未找到知识记录: {record_id}")
+
+    document = (raw.get("documents") or [""])[0]
+    metadata = (raw.get("metadatas") or [{}])[0]
+    return _format_record(ids[0], document, metadata)
+
+
+def create_knowledge_record(
+    content: str,
+    source: str = "manual",
+    metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    if not content.strip():
+        raise ValueError("内容不能为空")
+
+    record_id = str(uuid.uuid4())
+    payload = _normalize_metadata(metadata, source)
+    vector_store.add_texts(texts=[content], metadatas=[payload], ids=[record_id])
+    return _format_record(record_id, content, payload)
+
+
+def update_knowledge_record(
+    record_id: str,
+    content: str,
+    source: str = "manual",
+    metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    existing = get_knowledge_record(record_id)
+    if not content.strip():
+        raise ValueError("内容不能为空")
+
+    payload = dict(existing["metadata"])
+    payload.update(metadata or {})
+    payload["source"] = source or payload.get("source") or "manual"
+    payload.setdefault("type", payload.get("type") or "manual")
+    payload.setdefault("created_at", existing["created_at"])
+    payload["updated_at"] = _now_iso()
+
+    collection = _collection()
+    collection.delete(ids=[record_id])
+    vector_store.add_texts(texts=[content], metadatas=[payload], ids=[record_id])
+    return _format_record(record_id, content, payload)
+
+
+def delete_knowledge_record(record_id: str) -> Dict[str, Any]:
+    existing = get_knowledge_record(record_id)
+    _collection().delete(ids=[record_id])
+    return {
+        "status": "ok",
+        "message": "记录已删除",
+        "deleted": 1,
+        "record": existing,
     }
 
 
 def clear_knowledge() -> Dict[str, Any]:
     """清空知识库（谨慎使用）"""
-    collection = vector_store._collection
+    collection = _collection()
     count = collection.count()
     if count > 0:
         collection.delete()
@@ -83,11 +272,10 @@ def remove_knowledge_files(file_names: list[str]) -> Dict[str, Any]:
     if not file_names:
         return {"status": "no files", "message": "未提供文件名"}
 
-    collection = vector_store._collection
+    collection = _collection()
     removed = 0
     for name in file_names:
         try:
-            # 使用 metadata 中的 source 字段进行删除
             collection.delete(where={"source": name})
             removed += 1
         except Exception as e:

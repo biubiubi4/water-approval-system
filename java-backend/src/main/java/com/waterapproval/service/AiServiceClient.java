@@ -4,8 +4,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -85,6 +87,109 @@ public class AiServiceClient {
         
         try {
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> getKnowledgeStats() {
+        String url = aiServiceUrl + "/api/knowledge/stats";
+
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> listKnowledgeRecords(String query, String source, String recordType) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(aiServiceUrl + "/api/knowledge/records");
+        if (query != null && !query.isBlank()) {
+            builder.queryParam("q", query);
+        }
+        if (source != null && !source.isBlank()) {
+            builder.queryParam("source", source);
+        }
+        if (recordType != null && !recordType.isBlank()) {
+            builder.queryParam("record_type", recordType);
+        }
+
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(builder.toUriString(), Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> getKnowledgeRecord(String recordId) {
+        String url = aiServiceUrl + "/api/knowledge/records/" + recordId;
+
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> createKnowledgeRecord(Map<String, Object> payload) {
+        String url = aiServiceUrl + "/api/knowledge/records";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> updateKnowledgeRecord(String recordId, Map<String, Object> payload) {
+        String url = aiServiceUrl + "/api/knowledge/records/" + recordId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.PUT, request, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> deleteKnowledgeRecord(String recordId) {
+        String url = aiServiceUrl + "/api/knowledge/records/" + recordId;
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, Map.class);
             return response.getBody();
         } catch (Exception e) {
             Map<String, Object> errorResult = new HashMap<>();
