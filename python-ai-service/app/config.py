@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Embedding backend configuration
-    embedding_provider: str = "sentence_transformers"
+    embedding_provider: str = "hash"
     embedding_model_name: str = "BAAI/bge-small-zh-v1.5"
     embedding_fallback_provider: str = "hash"
 

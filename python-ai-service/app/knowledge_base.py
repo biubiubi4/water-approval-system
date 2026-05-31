@@ -7,7 +7,7 @@ try:
 except ImportError:
     from langchain_core.documents import Document
 
-from app.vector_store import vector_store
+from app.vector_store import rebuild_vector_store, vector_store
 from app.documents import split_text
 
 
@@ -85,4 +85,19 @@ def init_sample_knowledge() -> None:
         vector_store.add_documents(documents)
         print(f"已添加 {len(documents)} 条文档到知识库")
     except Exception as e:
-        print(f"添加文档失败: {e}")
+        message = str(e)
+        if (
+            "Error loading hnsw index" in message
+            or "Error constructing hnsw segment reader" in message
+            or "Error sending backfill request to compactor" in message
+        ):
+            print(f"知识库索引损坏，重建后重新初始化示例文档: {e}")
+            rebuild_vector_store()
+            try:
+                vector_store.add_documents(documents)
+                print(f"已添加 {len(documents)} 条文档到知识库")
+                return
+            except Exception as retry_error:
+                print(f"重建后仍然添加文档失败: {retry_error}")
+        else:
+            print(f"添加文档失败: {e}")

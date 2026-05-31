@@ -3,6 +3,18 @@
     <h2>{{ isEdit ? '编辑申请' : '新建申请' }}</h2>
     <form @submit.prevent="submitApplication" class="form">
       <div class="form-group">
+        <label for="projectName">项目名称</label>
+        <input type="text" id="projectName" v-model="form.projectName" required placeholder="请输入项目名称" />
+      </div>
+      <div class="form-group">
+        <label for="waterUse">用水类型</label>
+        <input type="text" id="waterUse" v-model="form.waterUse" required placeholder="请输入用水类型" />
+      </div>
+      <div class="form-group">
+        <label for="location">项目位置</label>
+        <input type="text" id="location" v-model="form.location" required placeholder="请输入项目位置" />
+      </div>
+      <div class="form-group">
         <label for="applicantName">申请人姓名</label>
         <input type="text" id="applicantName" v-model="form.applicantName" required placeholder="请输入申请人姓名" />
       </div>
@@ -51,6 +63,9 @@ import { ref, reactive, watch, computed } from 'vue'
 import axios from 'axios'
 
 const form = reactive({
+  projectName: '',
+  waterUse: '',
+  location: '',
   applicantName: '',
   applicantId: ''
 })
@@ -72,6 +87,9 @@ const props = defineProps({
 const isEdit = computed(() => !!props.application)
 
 function resetForm() {
+  form.projectName = ''
+  form.waterUse = ''
+  form.location = ''
   form.applicantName = ''
   form.applicantId = ''
   files.value = []
@@ -80,6 +98,9 @@ function resetForm() {
 
 watch(() => props.application, (val) => {
   if (val) {
+    form.projectName = val.projectName || ''
+    form.waterUse = val.waterUse || ''
+    form.location = val.location || ''
     form.applicantName = val.applicantName || ''
     form.applicantId = val.applicantId || ''
     existingFiles.value = Array.isArray(val.files) ? [...val.files] : []
@@ -88,10 +109,10 @@ watch(() => props.application, (val) => {
   }
 }, { immediate: true })
 
-const messageClass = {
+const messageClass = computed(() => ({
   'message-success': messageType.value === 'success',
   'message-error': messageType.value === 'error'
-}
+}))
 
 const triggerFileInput = () => {
   fileInput.value?.click()
@@ -122,6 +143,9 @@ const submitApplication = async () => {
   message.value = ''
 
   const formData = new FormData()
+  formData.append('projectName', form.projectName)
+  formData.append('waterUse', form.waterUse)
+  formData.append('location', form.location)
   formData.append('applicantName', form.applicantName)
   formData.append('applicantId', form.applicantId)
   

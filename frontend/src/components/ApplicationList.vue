@@ -9,6 +9,9 @@
         <tr>
           <th>ID</th>
           <th>申请人姓名</th>
+          <th>项目名称</th>
+          <th>用水类型</th>
+          <th>项目位置</th>
           <th>证件号码</th>
           <th>申请日期</th>
           <th>状态</th>
@@ -19,6 +22,9 @@
         <tr v-for="app in filteredApplications" :key="app.id">
           <td>{{ app.id }}</td>
           <td>{{ app.applicantName }}</td>
+          <td>{{ app.projectName || '-' }}</td>
+          <td>{{ app.waterUse || '-' }}</td>
+          <td>{{ app.location || '-' }}</td>
           <td>{{ maskId(app.applicantId) }}</td>
           <td>{{ formatDate(app.applicationDate) }}</td>
           <td>
@@ -50,7 +56,8 @@ const searchQuery = ref('')
 const filteredApplications = computed(() => {
   if (!searchQuery.value) return applications.value
   return applications.value.filter(app =>
-    app.applicantName.toLowerCase().includes(searchQuery.value.toLowerCase())
+    (app.applicantName || '').toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    (app.projectName || '').toLowerCase().includes(searchQuery.value.toLowerCase())
   )
 })
 

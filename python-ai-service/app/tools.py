@@ -77,7 +77,18 @@ def knowledge_search(query: str, top_k: int = 4) -> List[Dict[str, Any]]:
     if not query.strip():
         return []
 
-    results = vector_store.similarity_search_with_score(query, k=top_k)
+    try:
+        results = vector_store.similarity_search_with_score(query, k=top_k)
+    except Exception as error:
+        message = str(error)
+        if (
+            "Error loading hnsw index" in message
+            or "Error constructing hnsw segment reader" in message
+            or "Error sending backfill request to compactor" in message
+        ):
+            print(f"知识库索引损坏，返回空检索结果: {error}")
+            return []
+        raise
     payload: List[Dict[str, Any]] = []
     for rank, (document, score) in enumerate(results, 1):
         metadata = document.metadata or {}

@@ -12,11 +12,20 @@ except ImportError:
     from langchain_core.documents import Document
 
 from app.documents import process_documents, split_text
-from app.vector_store import vector_store
+from app.vector_store import rebuild_vector_store, vector_store
 
 
 def _collection():
     return vector_store._collection
+
+
+def _is_chroma_index_error(error: Exception) -> bool:
+    message = str(error)
+    return (
+        "Error loading hnsw index" in message
+        or "Error constructing hnsw segment reader" in message
+        or "Error sending backfill request to compactor" in message
+    )
 
 
 def _uploads_dir() -> Path:
@@ -70,7 +79,13 @@ def _format_parsed_document(document: Document, record_id: str | None = None) ->
 
 
 def _load_records() -> List[Dict[str, Any]]:
-    raw = _collection().get(include=["documents", "metadatas"])
+    try:
+        raw = _collection().get(include=["documents", "metadatas"])
+    except Exception as error:
+        if _is_chroma_index_error(error):
+            print(f"知识库索引损坏，返回空记录列表: {error}")
+            return []
+        raise
     ids = raw.get("ids") or []
     documents = raw.get("documents") or []
     metadatas = raw.get("metadatas") or []
@@ -141,7 +156,15 @@ def _store_documents(documents: List[Document]) -> List[str]:
         texts.append(document.page_content)
         metadatas.append(metadata)
 
-    vector_store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+    try:
+        vector_store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+    except Exception as error:
+        if _is_chroma_index_error(error):
+            print(f"知识库写入失败，正在重建向量库后重试: {error}")
+            rebuild_vector_store()
+            vector_store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        else:
+            raise
     return ids
 
 
@@ -252,7 +275,12 @@ def list_knowledge_records(
 
 
 def get_knowledge_record(record_id: str) -> Dict[str, Any]:
-    raw = _collection().get(ids=[record_id], include=["documents", "metadatas"])
+    try:
+        raw = _collection().get(ids=[record_id], include=["documents", "metadatas"])
+    except Exception as error:
+        if _is_chroma_index_error(error):
+            raise ValueError(f"知识库索引损坏，无法读取记录: {record_id}") from error
+        raise
     ids = raw.get("ids") or []
     if not ids:
         raise ValueError(f"未找到知识记录: {record_id}")
@@ -301,7 +329,12 @@ def update_knowledge_record(
 
 def delete_knowledge_record(record_id: str) -> Dict[str, Any]:
     existing = get_knowledge_record(record_id)
-    _collection().delete(ids=[record_id])
+    try:
+        _collection().delete(ids=[record_id])
+    except Exception as error:
+        if _is_chroma_index_error(error):
+            raise ValueError(f"知识库索引损坏，无法删除记录: {record_id}") from error
+        raise
     return {
         "status": "ok",
         "message": "记录已删除",
