@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from app.vector_store import vector_store
 
 
-REQUIRED_FIELDS = ["applicant_name", "applicant_id", "project_name", "water_use", "attachments"]
+REQUIRED_FIELDS = ["applicant_name", "applicant_id", "project_name", "attachments"]
 
 
 CHECKLIST = [
@@ -14,20 +14,12 @@ CHECKLIST = [
         "aliases": ["申请书", "取水申请书", "申请表", "water application form"],
     },
     {
-        "name": "申请人身份证明或主体资格材料",
-        "aliases": ["身份证", "身份证明", "营业执照", "主体资格", "法人证书"],
+        "name": "营业执照",
+        "aliases": ["营业执照", "主体资格", "法人证书", "信用代码证"],
     },
     {
-        "name": "与第三者利害关系说明",
-        "aliases": ["第三者利害关系", "利害关系说明", "第三方关系说明"],
-    },
-    {
-        "name": "水资源论证报告书或报告表及审查意见",
-        "aliases": ["水资源论证报告", "论证报告表", "审查意见", "论证报告书"],
-    },
-    {
-        "name": "取水工程或者设施建设材料",
-        "aliases": ["取水工程", "设施建设", "工程建设", "备案材料"],
+        "name": "身份证",
+        "aliases": ["身份证", "身份证明", "法人证明", "法人身份证", "id card"],
     },
 ]
 

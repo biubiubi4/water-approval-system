@@ -7,14 +7,6 @@
         <input type="text" id="projectName" v-model="form.projectName" required placeholder="请输入项目名称" />
       </div>
       <div class="form-group">
-        <label for="waterUse">用水类型</label>
-        <input type="text" id="waterUse" v-model="form.waterUse" required placeholder="请输入用水类型" />
-      </div>
-      <div class="form-group">
-        <label for="location">项目位置</label>
-        <input type="text" id="location" v-model="form.location" required placeholder="请输入项目位置" />
-      </div>
-      <div class="form-group">
         <label for="applicantName">申请人姓名</label>
         <input type="text" id="applicantName" v-model="form.applicantName" required placeholder="请输入申请人姓名" />
       </div>
@@ -23,25 +15,49 @@
         <input type="text" id="applicantId" v-model="form.applicantId" required placeholder="请输入证件号码" />
       </div>
       <div class="form-group">
-        <label for="files">上传附件</label>
-        <div class="upload-area" @click="triggerFileInput" @dragover.prevent @drop.prevent="handleDrop">
-          <input type="file" id="files" ref="fileInput" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" @change="handleFileSelect" style="display: none;" />
-          <div v-if="files.length === 0" class="upload-hint">
-            <p>点击或拖拽文件到此处上传</p>
-            <p class="hint-text">支持 PDF、Word、图片等格式</p>
-          </div>
-          <div v-else class="file-list">
-            <div v-for="(file, index) in files" :key="index" class="file-item">
-              <span>{{ file.name }}</span>
-              <button type="button" @click="removeFile(index)" class="btn-remove">×</button>
-            </div>
-          </div>
-        </div>
+        <label>附件材料</label>
+        
         <div v-if="isEdit && existingFiles.length > 0" class="existing-files">
-          <h4>当前已上传的附件（编辑时若上传新附件将替换旧附件）</h4>
+          <p class="hint-text">当前已上传的文件：</p>
           <ul>
             <li v-for="(f, idx) in existingFiles" :key="idx">{{ f }}</li>
           </ul>
+          <p class="hint-text warning" style="color: #d97706;">若需修改附件，请同时上传最新的申请书、身份证和营业执照以替换。</p>
+        </div>
+
+        <div class="upload-area-group">
+          <!-- 申请书 -->
+          <div class="specific-upload" @click="triggerSpecificFile('appForm')">
+            <span class="upload-title">1. 取水许可申请书 *</span>
+            <input type="file" ref="appFormInput" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" @change="handleSpecificFile($event, 'appForm')" style="display: none;" />
+            <div v-if="!fileSlots.appForm" class="upload-hint-sm">点击上传</div>
+            <div v-else class="file-item-sm" @click.stop>
+              <span>{{ fileSlots.appForm.name }}</span>
+              <button type="button" @click.stop="removeSpecificFile('appForm')" class="btn-remove">×</button>
+            </div>
+          </div>
+          
+          <!-- 身份证 -->
+          <div class="specific-upload" @click="triggerSpecificFile('idCard')">
+            <span class="upload-title">2. 法定代表人身份证 *</span>
+            <input type="file" ref="idCardInput" accept=".jpg,.jpeg,.png,.pdf" @change="handleSpecificFile($event, 'idCard')" style="display: none;" />
+            <div v-if="!fileSlots.idCard" class="upload-hint-sm">点击上传</div>
+            <div v-else class="file-item-sm" @click.stop>
+              <span>{{ fileSlots.idCard.name }}</span>
+              <button type="button" @click.stop="removeSpecificFile('idCard')" class="btn-remove">×</button>
+            </div>
+          </div>
+
+          <!-- 营业执照 -->
+          <div class="specific-upload" @click="triggerSpecificFile('bizLicense')">
+            <span class="upload-title">3. 营业执照 *</span>
+            <input type="file" ref="bizLicenseInput" accept=".jpg,.jpeg,.png,.pdf" @change="handleSpecificFile($event, 'bizLicense')" style="display: none;" />
+            <div v-if="!fileSlots.bizLicense" class="upload-hint-sm">点击上传</div>
+            <div v-else class="file-item-sm" @click.stop>
+              <span>{{ fileSlots.bizLicense.name }}</span>
+              <button type="button" @click.stop="removeSpecificFile('bizLicense')" class="btn-remove">×</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="form-actions">
@@ -64,14 +80,20 @@ import axios from 'axios'
 
 const form = reactive({
   projectName: '',
-  waterUse: '',
-  location: '',
   applicantName: '',
   applicantId: ''
 })
 
-const files = ref([])
-const fileInput = ref(null)
+const fileSlots = reactive({
+  appForm: null,
+  idCard: null,
+  bizLicense: null
+})
+
+const appFormInput = ref(null)
+const idCardInput = ref(null)
+const bizLicenseInput = ref(null)
+
 const isSubmitting = ref(false)
 const message = ref('')
 const messageType = ref('')
@@ -88,19 +110,17 @@ const isEdit = computed(() => !!props.application)
 
 function resetForm() {
   form.projectName = ''
-  form.waterUse = ''
-  form.location = ''
   form.applicantName = ''
   form.applicantId = ''
-  files.value = []
+  fileSlots.appForm = null
+  fileSlots.idCard = null
+  fileSlots.bizLicense = null
   existingFiles.value = []
 }
 
 watch(() => props.application, (val) => {
   if (val) {
     form.projectName = val.projectName || ''
-    form.waterUse = val.waterUse || ''
-    form.location = val.location || ''
     form.applicantName = val.applicantName || ''
     form.applicantId = val.applicantId || ''
     existingFiles.value = Array.isArray(val.files) ? [...val.files] : []
@@ -114,28 +134,42 @@ const messageClass = computed(() => ({
   'message-error': messageType.value === 'error'
 }))
 
-const triggerFileInput = () => {
-  fileInput.value?.click()
+const triggerSpecificFile = (type) => {
+  if (type === 'appForm') appFormInput.value?.click()
+  if (type === 'idCard') idCardInput.value?.click()
+  if (type === 'bizLicense') bizLicenseInput.value?.click()
 }
 
-const handleFileSelect = (event) => {
-  const selectedFiles = Array.from(event.target.files)
-  files.value = [...files.value, ...selectedFiles]
+const handleSpecificFile = (event, type) => {
+  const file = event.target.files[0]
+  if (file) {
+    fileSlots[type] = file
+  }
 }
 
-const handleDrop = (event) => {
-  const droppedFiles = Array.from(event.dataTransfer.files)
-  files.value = [...files.value, ...droppedFiles]
-}
-
-const removeFile = (index) => {
-  files.value.splice(index, 1)
+const removeSpecificFile = (type) => {
+  fileSlots[type] = null
+  if (type === 'appForm' && appFormInput.value) appFormInput.value.value = ''
+  if (type === 'idCard' && idCardInput.value) idCardInput.value.value = ''
+  if (type === 'bizLicense' && bizLicenseInput.value) bizLicenseInput.value.value = ''
 }
 
 const submitApplication = async () => {
-  // 对于新建，要求至少上传一个附件；编辑时可不上传（保持原文件）
-  if (!isEdit.value && files.value.length === 0) {
-    showMessage('请至少上传一个附件', 'error')
+  const newFiles = []
+  if (fileSlots.appForm) newFiles.push(fileSlots.appForm)
+  if (fileSlots.idCard) newFiles.push(fileSlots.idCard)
+  if (fileSlots.bizLicense) newFiles.push(fileSlots.bizLicense)
+
+  const hasAnyNewFile = newFiles.length > 0;
+  const hasAllNewFiles = newFiles.length === 3;
+
+  if (!isEdit.value && !hasAllNewFiles) {
+    showMessage('新建申请需上传完整的申请书、身份证和营业执照', 'error')
+    return
+  }
+  
+  if (isEdit.value && hasAnyNewFile && !hasAllNewFiles) {
+    showMessage('若要修改附件，请同时上传最新的申请书、身份证和营业执照', 'error')
     return
   }
 
@@ -144,12 +178,10 @@ const submitApplication = async () => {
 
   const formData = new FormData()
   formData.append('projectName', form.projectName)
-  formData.append('waterUse', form.waterUse)
-  formData.append('location', form.location)
   formData.append('applicantName', form.applicantName)
   formData.append('applicantId', form.applicantId)
   
-  files.value.forEach(file => {
+  newFiles.forEach(file => {
     formData.append('files', file)
   })
 
@@ -241,13 +273,67 @@ const emitSaved = () => {
   font-size: 1rem;
 }
 
-.upload-area {
+.upload-area-group {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.specific-upload {
+  flex: 1;
+  min-width: 150px;
   border: 2px dashed #ddd;
   border-radius: 8px;
-  padding: 2rem;
+  padding: 1.5rem 1rem;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.3s;
+  background-color: #fafafa;
+  transition: all 0.3s;
+}
+
+.specific-upload:hover {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.upload-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #4b5563;
+  font-size: 0.95rem;
+}
+
+.upload-hint-sm {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.file-item-sm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.btn-remove {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 0.5rem;
+}
+
+.btn-remove:hover {
+  color: #b91c1c;
+}
+
+.warning {
+  color: #d97706;
 }
 
 .upload-area:hover,

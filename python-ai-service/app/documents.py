@@ -258,6 +258,39 @@ def load_url(url: str) -> List[Document]:
     return []
 
 
+def load_image(file_path: Path) -> List[Document]:
+    """加载图片文档并提取文字"""
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+        
+        # 使用 RapidOCR 引擎（内嵌 ONNX 模型，不需要独立安装客户端，极轻量稳定极快）
+        engine = RapidOCR()
+        img_path = str(file_path)
+        
+        result, elapse = engine(img_path)
+        if not result:
+            return []
+            
+        text_lines = []
+        # result 的结构是 [([x, y], '文本', 相似度), ...]
+        for item in result:
+            text = item[1]
+            if text and text.strip():
+                text_lines.append(text.strip())
+                
+        extracted_text = "\n".join(text_lines)
+        if not extracted_text:
+            return []
+            
+        return [Document(
+            page_content=_clean_extracted_text(extracted_text), 
+            metadata={"source": file_path.name, "file_path": str(file_path)}
+        )]
+    except Exception as e:
+        print(f"图片 OCR 解析失败 {file_path}: {e}")
+        return []
+
+
 def load_document(file_path: Path) -> List[Document]:
     """根据文件类型加载文档"""
     suffix = file_path.suffix.lower()
@@ -274,6 +307,8 @@ def load_document(file_path: Path) -> List[Document]:
         return load_html(file_path)
     elif suffix == ".json":
         return load_json(file_path)
+    elif suffix in [".jpg", ".jpeg", ".png", ".bmp", ".webp"]:
+        return load_image(file_path)
     else:
         return load_generic_file(file_path)
 

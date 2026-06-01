@@ -14,6 +14,7 @@ public class ApplicationResponse {
     private LocalDateTime applicationDate;
     private String status;
     private String reviewResult;
+    private java.util.List<Object> reviewHistory;
     private List<String> files;
     private List<String> attachments;
 
@@ -87,6 +88,14 @@ public class ApplicationResponse {
 
     public void setReviewResult(String reviewResult) {
         this.reviewResult = reviewResult;
+    }
+
+    public java.util.List<Object> getReviewHistory() {
+        return reviewHistory;
+    }
+
+    public void setReviewHistory(java.util.List<Object> reviewHistory) {
+        this.reviewHistory = reviewHistory;
     }
 
     public List<String> getFiles() {

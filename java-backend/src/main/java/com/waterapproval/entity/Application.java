@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.Column;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,8 +27,14 @@ public class Application {
     private String location;
     private LocalDateTime applicationDate;
     private String status;
+
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String reviewResult;
+
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String reviewHistory;
 
     @ElementCollection
     private List<String> files = new ArrayList<>();
@@ -105,6 +112,14 @@ public class Application {
 
     public void setReviewResult(String reviewResult) {
         this.reviewResult = reviewResult;
+    }
+
+    public String getReviewHistory() {
+        return reviewHistory;
+    }
+
+    public void setReviewHistory(String reviewHistory) {
+        this.reviewHistory = reviewHistory;
     }
 
     public List<String> getFiles() {

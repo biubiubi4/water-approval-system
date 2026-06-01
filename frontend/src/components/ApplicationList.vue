@@ -33,6 +33,7 @@
           <td>
             <button @click="$emit('select-application', app)" class="btn-view">查看详情</button>
             <button @click="$emit('edit-application', app)" class="btn-edit">编辑</button>
+            <button @click="$emit('review-application', app)" class="btn-review" style="background-color: #3b82f6; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">审查/结果</button>
             <button @click="deleteApplication(app.id)" class="btn-delete">删除</button>
           </td>
         </tr>
@@ -48,7 +49,7 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
-const emit = defineEmits(['select-application', 'edit-application'])
+const emit = defineEmits(['select-application', 'edit-application', 'review-application'])
 
 const applications = ref([])
 const searchQuery = ref('')

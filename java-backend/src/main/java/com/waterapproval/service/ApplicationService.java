@@ -70,7 +70,25 @@ public class ApplicationService {
         Map<String, Object> aiResponse = aiServiceClient.reviewApplication(payload);
         String status = (String) aiResponse.getOrDefault("status", "ERROR");
         application.setStatus(status);
+        // 保存最新结果
         application.setReviewResult(JsonSupport.toJson(aiResponse));
+
+        // 将本次结果追加到历史数组（以 JSON 数组字符串存储）
+        java.util.List<Object> history = new java.util.ArrayList<>();
+        try {
+            String existing = application.getReviewHistory();
+            if (existing != null && !existing.isBlank()) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.List<Object> parsed = mapper.readValue(existing, java.util.List.class);
+                if (parsed != null) {
+                    history.addAll(parsed);
+                }
+            }
+        } catch (Exception ex) {
+            // ignore parse errors and continue with empty history
+        }
+        history.add(aiResponse);
+        application.setReviewHistory(JsonSupport.toJson(history));
 
         repository.save(application);
 
@@ -155,6 +173,19 @@ public class ApplicationService {
         response.setApplicationDate(application.getApplicationDate());
         response.setStatus(application.getStatus());
         response.setReviewResult(application.getReviewResult());
+        // 解析并填充历史审查记录
+        try {
+            String rawHistory = application.getReviewHistory();
+            if (rawHistory != null && !rawHistory.isBlank()) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.List<Object> parsed = mapper.readValue(rawHistory, java.util.List.class);
+                response.setReviewHistory(parsed);
+            } else {
+                response.setReviewHistory(new java.util.ArrayList<>());
+            }
+        } catch (Exception ex) {
+            response.setReviewHistory(new java.util.ArrayList<>());
+        }
         response.setFiles(application.getFiles());
         response.setAttachments(application.getAttachments());
         return response;
@@ -269,6 +300,8 @@ public class ApplicationService {
         second.setAttachments(List.of("申请表.pdf", "承诺书.pdf"));
         second.setReviewResult(
                 "{\"status\":\"APPROVED\",\"message\":\"示例审核结果\",\"details\":{\"completeness\":{\"complete\":true},\"knowledge_hits\":[]}} ");
+        // 将示例结果也放入历史中
+        second.setReviewHistory("[" + second.getReviewResult().trim() + "]");
         repository.save(second);
     }
 

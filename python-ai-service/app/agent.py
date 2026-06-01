@@ -141,7 +141,7 @@ class WaterApprovalAgent:
 
         # 步骤3：合规性判断（优先使用外部AI，如未配置则回退到本地规则）
         if self.llm and getattr(self.llm, "enabled", False):
-            llm_resp = self.llm.generate_review(application_data, result["knowledge_hits"])
+            llm_resp = self.llm.generate_review(application_data, result["knowledge_hits"], loaded_documents)
             if llm_resp is None:
                 # 没有有效配置，回退到本地实现
                 compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
@@ -173,11 +173,11 @@ class WaterApprovalAgent:
     def _build_search_query(self, application: Dict[str, Any], documents: List[Any] | None = None) -> str:
         """构建搜索查询"""
         parts = []
-        if "water_use" in application:
+        if application.get("water_use"):
             parts.append(f"取水用途：{application['water_use']}")
-        if "location" in application:
+        if application.get("location"):
             parts.append(f"取水地点：{application['location']}")
-        if "project_name" in application:
+        if application.get("project_name"):
             parts.append(f"项目：{application['project_name']}")
 
         if documents:
@@ -221,12 +221,12 @@ class WaterApprovalAgent:
         """合规性检查"""
         violations = []
         
-        required_fields = ["water_use", "location", "applicant_id"]
+        required_fields = ["project_name", "applicant_name", "applicant_id"]
         missing_content = [f for f in required_fields if not application.get(f)]
         if missing_content:
             violations.append(f"缺少必填内容：{', '.join(missing_content)}")
         
-        water_use = application.get("water_use", "")
+        water_use = application.get("water_use") or ""
         if "饮用水" in water_use:
             violations.append("饮用水源保护区禁止新设取水口")
         

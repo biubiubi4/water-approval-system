@@ -51,43 +51,32 @@
             </div>
             
             <div v-if="reviewResult.details.suggestions && reviewResult.details.suggestions.length > 0" class="suggestions">
-              <h4>修改建议</h4>
-              <ul>
-                <li v-for="(suggestion, index) in reviewResult.details.suggestions" :key="index">
-                  {{ suggestion }}
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div v-if="reviewResult.knowledge_hits && reviewResult.knowledge_hits.length > 0" class="knowledge-hits">
-            <h4>相关法规命中</h4>
-            <div
-              v-for="hit in reviewResult.knowledge_hits"
-              :key="`${hit.rank}-${hit.file_path || hit.source}`"
-              class="hit-card"
-            >
-              <div class="hit-card-head">
-                <strong>命中 {{ hit.rank }}</strong>
-                <span class="hit-score">相似度 {{ formatSimilarity(hit.similarity) }}</span>
-              </div>
-              <div class="hit-meta">
-                <span>来源：{{ hit.source || '-' }}</span>
-                <span>分数：{{ formatScore(hit.score) }}</span>
-                <span v-if="hit.page != null">页码：{{ hit.page }}</span>
-                <span v-if="hit.chunk != null">分块：{{ hit.chunk }}</span>
-              </div>
-              <p class="hit-content">{{ hit.content }}</p>
+              <h4>修改建议与不合规清单</h4>
+              <textarea 
+                readonly 
+                class="suggestions-textbox"
+                rows="6"
+                :value="Array.isArray(reviewResult.details.suggestions) ? reviewResult.details.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n') : reviewResult.details.suggestions"
+                style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 4px; background: #f9fafb; color: #374151; font-family: inherit; font-size: 0.9rem; resize: vertical;"
+              ></textarea>
             </div>
           </div>
         </div>
         
         <div v-else class="no-result">
           <p>暂无审核结果</p>
+        </div>
+
+        <div class="review-actions" style="margin-top: 1.5rem; text-align: center;">
           <button @click="triggerReview" :disabled="isReviewing" class="btn-review">
             <span v-if="isReviewing">审核中...</span>
-            <span v-else>重新审核</span>
+            <span v-else>{{ reviewResult ? '重新审核' : '开始审核' }}</span>
           </button>
+        </div>
+
+        <div v-if="application.reviewResult" class="raw-response" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee;">
+          <h4>原始返回内容</h4>
+          <pre class="raw-content" style="background: #f3f4f6; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.875rem; color: #374151; white-space: pre-wrap;">{{ typeof application.reviewResult === 'object' ? JSON.stringify(application.reviewResult, null, 2) : (function(){ try { return JSON.stringify(JSON.parse(application.reviewResult), null, 2) } catch(e) { return application.reviewResult } })() }}</pre>
         </div>
       </div>
     </div>

@@ -5,12 +5,11 @@
       <nav class="nav">
         <button @click="currentPage = 'list'" :class="{ active: currentPage === 'list' }">申请列表</button>
         <button @click="newApplication" :class="{ active: currentPage === 'create' }">新建申请</button>
-        <button @click="currentPage = 'result'" :class="{ active: currentPage === 'result' }">初审结果</button>
         <button @click="currentPage = 'knowledge'" :class="{ active: currentPage === 'knowledge' }">知识库管理</button>
       </nav>
     </header>
     <main class="main-content">
-      <ApplicationList v-if="currentPage === 'list'" @select-application="viewDetails" @edit-application="editApplication" />
+      <ApplicationList v-if="currentPage === 'list'" @select-application="viewDetails" @edit-application="editApplication" @review-application="viewResult" />
       <CreateApplication v-if="currentPage === 'create'" :application="selectedApplication" @saved="onSaved" />
       <ReviewResult v-if="currentPage === 'result'" :application="selectedApplication" />
       <ApplicationDetails v-if="currentPage === 'details'" :application="selectedApplication" />
