@@ -1,20 +1,24 @@
 # Python AI Service
 
-这是涉水审批智能审核系统的 Python AI 服务骨架，提供以下能力：
+这是涉水审批智能审核系统的 Python AI 服务，负责知识检索、材料完整性检查、合规性初审和 MCP 工具暴露。
 
-- 文档解析：支持 PDF、Word、文本文件
-- 知识库：基于 ChromaDB 的本地向量库
-- LangChain：使用 LangChain 的 `Embeddings` 与 `Chroma` 组件
-- 核心工具：`knowledge_search`、`check_completeness`
-- MCP 暴露：`GET /api/mcp/tools` 与 `POST /api/mcp/{tool_name}`
+## 技术栈
+
+- FastAPI
+- LangChain
+- ChromaDB
+- Pydantic Settings
+- MCP
 
 ## 启动
 
 ```bash
 cd python-ai-service
 pip install -r requirements.txt
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+python main.py
 ```
+
+服务默认运行在 `http://127.0.0.1:8000`。
 
 如果需要独立的 MCP 启动入口，可以运行：
 
@@ -22,11 +26,23 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 python -m app.mcp_server
 ```
 
-## 接口
+## 主要接口
 
-- `GET /health`：健康检查
-- `POST /api/knowledge/add`：添加知识文本
-- `POST /api/knowledge/upload`：上传 PDF / Word / TXT 文件并入库
-- `GET /api/knowledge/search?q=...`：知识检索
-- `POST /api/check-completeness`：完整性检查（支持 `application` 或 `materials`）
-- `POST /api/review`：合规性初审
+- `GET /health`
+- `GET /docs`
+- `GET /api/mcp/tools`
+- `POST /api/mcp/{tool_name}`
+- `POST /api/knowledge/add`
+- `POST /api/knowledge/upload`
+- `GET /api/knowledge/search`
+- `GET /api/knowledge/stats`
+- `GET /api/knowledge/records`
+- `POST /api/knowledge/records`
+- `PUT /api/knowledge/records/{record_id}`
+- `DELETE /api/knowledge/records/{record_id}`
+- `POST /api/review`
+- `POST /api/check-completeness`
+
+## 说明
+
+完整接口说明、请求参数和部署步骤请参考 [../API文档.md](../API文档.md) 与 [../部署说明.md](../部署说明.md)。
