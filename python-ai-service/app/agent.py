@@ -119,13 +119,8 @@ class WaterApprovalAgent:
         # 步骤1：完整性检查
         try:
             completeness = execute_tool("check_completeness", {"application": application_data})
+            completeness["status"] = "PASS" if completeness.get("complete") else "FAIL"
             result["details"]["completeness"] = completeness
-            
-            if not completeness["complete"]:
-                result["status"] = "REJECTED"
-                result["message"] = "申请材料不完整"
-                result["suggestions"] = completeness["issues"]
-                return result
         except Exception as e:
             result["status"] = "ERROR"
             result["message"] = f"完整性检查失败: {str(e)}"
@@ -165,8 +160,30 @@ class WaterApprovalAgent:
                     self._apply_local_decision(result, compliance_result)
         else:
             compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+            compliance_result["status"] = "PASS" if compliance_result.get("pass") else "FAIL"
             result["details"]["compliance"] = compliance_result
-            self._apply_local_decision(result, compliance_result)
+
+        completeness_failed = not bool(result["details"].get("completeness", {}).get("complete", True))
+        compliance_failed = not bool(result["details"].get("compliance", {}).get("pass", True))
+
+        if completeness_failed or compliance_failed:
+            result["status"] = "REJECTED"
+            if completeness_failed and compliance_failed:
+                result["message"] = "申请材料不完整且存在合规性问题"
+            elif completeness_failed:
+                result["message"] = "申请材料不完整"
+            else:
+                result["message"] = "申请不符合法规要求"
+
+            suggestions: List[str] = []
+            completeness_issues = result["details"].get("completeness", {}).get("issues") or []
+            compliance_violations = result["details"].get("compliance", {}).get("violations") or []
+            suggestions.extend(str(item) for item in completeness_issues)
+            suggestions.extend(str(item) for item in compliance_violations)
+            result["suggestions"] = suggestions
+        else:
+            result["status"] = "APPROVED"
+            result["message"] = "申请审核通过"
         
         return result
     

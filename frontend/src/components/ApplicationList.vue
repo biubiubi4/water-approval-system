@@ -24,12 +24,12 @@
           <td>{{ maskId(app.applicantId) }}</td>
           <td>{{ formatDate(app.applicationDate) }}</td>
           <td>
-            <span :class="getStatusClass(app.status)">{{ getStatusText(app.status) }}</span>
+            <span :class="getStatusClass(app.status)">{{ getStatusText(app) }}</span>
           </td>
           <td>
             <button @click="$emit('select-application', app)" class="btn-view">查看详情</button>
             <button @click="$emit('edit-application', app)" class="btn-edit">编辑</button>
-            <button @click="$emit('review-application', app)" class="btn-review" style="background-color: #3b82f6; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">审查/结果</button>
+            <button @click="$emit('review-application', app)" class="btn-review">审查/结果</button>
             <button @click="deleteApplication(app.id)" class="btn-delete">删除</button>
           </td>
         </tr>
@@ -69,24 +69,58 @@ const formatDate = (dateStr) => {
   return date.toLocaleDateString('zh-CN')
 }
 
+const parseReviewResult = (reviewResult) => {
+  if (!reviewResult) return null
+  if (typeof reviewResult === 'object') return reviewResult
+  try {
+    return JSON.parse(reviewResult)
+  } catch (error) {
+    return null
+  }
+}
+
+const getRejectedReasons = (application) => {
+  const reviewResult = parseReviewResult(application.reviewResult)
+  const completeness = reviewResult?.details?.completeness
+  const compliance = reviewResult?.details?.compliance
+  const reasons = []
+
+  if (completeness && (completeness.complete === false || completeness.status === 'FAIL')) {
+    reasons.push('材料不完整')
+  }
+
+  if (compliance && (compliance.pass === false || compliance.status === 'FAIL')) {
+    reasons.push('合规性有问题')
+  }
+
+  return reasons
+}
+
 const getStatusClass = (status) => {
   const classes = {
-    'PENDING': 'status-pending',
-    'APPROVED': 'status-approved',
-    'REJECTED': 'status-rejected',
-    'ERROR': 'status-error'
+    PENDING: 'status-pending',
+    APPROVED: 'status-approved',
+    REJECTED: 'status-rejected',
+    ERROR: 'status-error'
   }
   return classes[status] || 'status-unknown'
 }
 
-const getStatusText = (status) => {
+const getStatusText = (application) => {
+  const status = application?.status
   const texts = {
-    'PENDING': '待审核',
-    'APPROVED': '审核通过',
-    'REJECTED': '审核未通过',
-    'ERROR': '审核异常'
+    PENDING: '待审核',
+    APPROVED: '审核通过',
+    REJECTED: '审核未通过',
+    ERROR: '审核异常'
   }
-  return texts[status] || status
+
+  if (status === 'REJECTED') {
+    const reasons = getRejectedReasons(application)
+    return reasons.length ? `审核未通过（${reasons.join('，')}）` : texts[status]
+  }
+
+  return texts[status] || status || '-'
 }
 
 const fetchApplications = async () => {
@@ -102,7 +136,6 @@ const deleteApplication = async (id) => {
   if (!confirm('确认删除该申请吗？此操作会同时删除上传的附件。')) return
   try {
     await axios.delete(`/api/applications/${id}`)
-    // 刷新列表
     await fetchApplications()
     alert('删除成功')
   } catch (error) {
@@ -116,15 +149,16 @@ onMounted(fetchApplications)
 
 <style scoped>
 .application-list {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 1.25rem;
 }
 
 .application-list h2 {
   margin-bottom: 1rem;
-  color: #1e40af;
+  color: #111827;
+  font-size: 1.15rem;
 }
 
 .search-bar {
@@ -133,10 +167,11 @@ onMounted(fetchApplications)
 
 .search-bar input {
   width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d1d5db;
   border-radius: 4px;
   font-size: 1rem;
+  background: #ffffff;
 }
 
 .table {
@@ -148,78 +183,49 @@ onMounted(fetchApplications)
 .table td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .table th {
-  background-color: #f5f7fa;
+  background-color: #f9fafb;
   font-weight: 600;
+  color: #374151;
 }
 
-.status-pending {
-  background-color: #fef3c7;
-  color: #d97706;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.status-approved {
-  background-color: #dcfce7;
-  color: #16a34a;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.status-rejected {
-  background-color: #fee2e2;
-  color: #dc2626;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
+.status-pending,
+.status-approved,
+.status-rejected,
 .status-error {
-  background-color: #e0e7ff;
-  color: #4338ca;
+  background-color: #f3f4f6;
+  color: #4b5563;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   font-size: 0.875rem;
 }
 
-.btn-view {
-  padding: 0.5rem 1rem;
-  background-color: #1e40af;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.btn-view:hover {
-  background-color: #1e3a8a;
-}
-
-.btn-edit {
-  padding: 0.4rem 0.8rem;
-  margin-left: 0.5rem;
-  background-color: #059669;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
+.btn-view,
+.btn-edit,
+.btn-review,
 .btn-delete {
-  padding: 0.4rem 0.8rem;
-  margin-left: 0.5rem;
-  background-color: #dc2626;
-  color: white;
-  border: none;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #d1d5db;
   border-radius: 4px;
   cursor: pointer;
+  background: #ffffff;
+  color: #374151;
+}
+
+.btn-edit,
+.btn-review,
+.btn-delete {
+  margin-left: 0.5rem;
+}
+
+.btn-view:hover,
+.btn-edit:hover,
+.btn-review:hover,
+.btn-delete:hover {
+  background: #f9fafb;
 }
 
 .empty-state {

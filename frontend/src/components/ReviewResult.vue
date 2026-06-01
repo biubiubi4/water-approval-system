@@ -25,7 +25,7 @@
           <span :class="getStatusClass(application.status)" class="status-value">{{ getStatusText(application.status) }}</span>
         </div>
       </div>
-      
+
       <div class="review-details">
         <h3>审核详情</h3>
         <div v-if="reviewResult" class="result-details">
@@ -39,48 +39,47 @@
               <p class="result-title">{{ reviewResult.message }}</p>
             </div>
           </div>
-          
+
           <div v-if="reviewResult.details" class="details-section">
             <div class="detail-item">
               <span class="detail-label">材料完整性</span>
-              <span class="detail-value">{{ reviewResult.details.completeness }}</span>
+              <span class="detail-value">{{ formatCompleteness(reviewResult.details.completeness) }}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">合规性判断</span>
-              <span class="detail-value">{{ reviewResult.details.compliance }}</span>
+              <span class="detail-value">{{ formatCompliance(reviewResult.details.compliance) }}</span>
             </div>
-            
+
             <div v-if="reviewResult.details.suggestions && reviewResult.details.suggestions.length > 0" class="suggestions">
               <h4>修改建议与不合规清单</h4>
-              <textarea 
-                readonly 
+              <textarea
+                readonly
                 class="suggestions-textbox"
                 rows="6"
                 :value="Array.isArray(reviewResult.details.suggestions) ? reviewResult.details.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n') : reviewResult.details.suggestions"
-                style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 4px; background: #f9fafb; color: #374151; font-family: inherit; font-size: 0.9rem; resize: vertical;"
               ></textarea>
             </div>
           </div>
         </div>
-        
+
         <div v-else class="no-result">
           <p>暂无审核结果</p>
         </div>
 
-        <div class="review-actions" style="margin-top: 1.5rem; text-align: center;">
+        <div class="review-actions">
           <button @click="triggerReview" :disabled="isReviewing" class="btn-review">
             <span v-if="isReviewing">审核中...</span>
             <span v-else>{{ reviewResult ? '重新审核' : '开始审核' }}</span>
           </button>
         </div>
 
-        <div v-if="application.reviewResult" class="raw-response" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee;">
+        <div v-if="application.reviewResult" class="raw-response">
           <h4>原始返回内容</h4>
-          <pre class="raw-content" style="background: #f3f4f6; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.875rem; color: #374151; white-space: pre-wrap;">{{ typeof application.reviewResult === 'object' ? JSON.stringify(application.reviewResult, null, 2) : (function(){ try { return JSON.stringify(JSON.parse(application.reviewResult), null, 2) } catch(e) { return application.reviewResult } })() }}</pre>
+          <pre class="raw-content">{{ rawReviewText }}</pre>
         </div>
       </div>
     </div>
-    
+
     <div v-else class="no-application">
       <p>请选择一个申请查看审核结果</p>
     </div>
@@ -118,55 +117,75 @@ const formatDate = (dateStr) => {
   })
 }
 
-const formatSimilarity = (value) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
-  return Number(value).toFixed(4)
+const formatDetailValue = (value) => {
+  if (value === null || value === undefined || value === '') return '暂无'
+  if (typeof value === 'string') return value
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (Array.isArray(value)) return value.length ? value.join('；') : '暂无'
+  if (typeof value === 'object') return JSON.stringify(value, null, 2)
+  return String(value)
 }
 
-const formatScore = (value) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
-  return Number(value).toFixed(4)
+const formatCompleteness = (value) => {
+  if (!value || typeof value !== 'object') return formatDetailValue(value)
+  const completeText = value.complete === true || value.status === 'PASS' ? '完整' : value.complete === false || value.status === 'FAIL' ? '不完整' : '未知'
+  const missingItems = Array.isArray(value.missing_items) && value.missing_items.length ? `缺少材料：${value.missing_items.join('、')}` : ''
+  const missingFields = Array.isArray(value.missing_fields) && value.missing_fields.length ? `缺少字段：${value.missing_fields.join('、')}` : ''
+  const issues = Array.isArray(value.issues) && value.issues.length ? value.issues.join('；') : ''
+  return [completeText, missingItems, missingFields, issues].filter(Boolean).join('；')
+}
+
+const formatCompliance = (value) => {
+  if (!value || typeof value !== 'object') return formatDetailValue(value)
+  const passText = value.pass === true || value.status === 'PASS' ? '通过' : value.pass === false || value.status === 'FAIL' ? '不通过' : '未知'
+  const violations = Array.isArray(value.violations) && value.violations.length ? value.violations.join('；') : ''
+  return [passText, violations].filter(Boolean).join('；')
 }
 
 const getStatusClass = (status) => {
   const classes = {
-    'PENDING': 'status-pending',
-    'APPROVED': 'status-approved',
-    'REJECTED': 'status-rejected',
-    'ERROR': 'status-error'
+    PENDING: 'status-pending',
+    APPROVED: 'status-approved',
+    REJECTED: 'status-rejected',
+    ERROR: 'status-error'
   }
   return classes[status] || 'status-unknown'
 }
 
 const getStatusText = (status) => {
   const texts = {
-    'PENDING': '待审核',
-    'APPROVED': '审核通过',
-    'REJECTED': '审核未通过',
-    'ERROR': '审核异常'
+    PENDING: '待审核',
+    APPROVED: '审核通过',
+    REJECTED: '审核未通过',
+    ERROR: '审核异常'
   }
-  return texts[status] || status
+  return texts[status] || status || '-'
 }
 
-const isApproved = computed(() => {
-  return props.application?.status === 'APPROVED'
-})
-
-const isRejected = computed(() => {
-  return props.application?.status === 'REJECTED'
-})
-
+const isApproved = computed(() => props.application?.status === 'APPROVED')
+const isRejected = computed(() => props.application?.status === 'REJECTED')
 const resultIconClass = computed(() => {
   if (isApproved.value) return 'icon-approved'
   if (isRejected.value) return 'icon-rejected'
   return 'icon-pending'
 })
 
+const rawReviewText = computed(() => {
+  const value = props.application?.reviewResult
+  if (typeof value === 'object') return JSON.stringify(value, null, 2)
+  if (!value) return ''
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch (error) {
+    return String(value)
+  }
+})
+
 const parseReviewResult = () => {
   if (props.application?.reviewResult) {
     try {
       reviewResult.value = JSON.parse(props.application.reviewResult)
-    } catch (e) {
+    } catch (error) {
       reviewResult.value = {
         message: props.application.reviewResult,
         details: {}
@@ -179,11 +198,10 @@ const parseReviewResult = () => {
 
 const triggerReview = async () => {
   if (!props.application?.id) return
-  
+
   isReviewing.value = true
   try {
     await axios.post(`/api/applications/${props.application.id}/review`)
-    // 刷新申请信息
     const response = await axios.get(`/api/applications/${props.application.id}`)
     props.application.status = response.data.status
     props.application.reviewResult = response.data.reviewResult
@@ -202,26 +220,28 @@ watch(() => props.application, () => {
 
 <style scoped>
 .review-result {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 1.25rem;
   max-width: 800px;
   margin: 0 auto;
 }
 
 .review-result h2 {
   margin-bottom: 1.5rem;
-  color: #1e40af;
+  color: #111827;
+  font-size: 1.15rem;
 }
 
 .application-info {
   margin-bottom: 1.5rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.application-info h3 {
+.application-info h3,
+.review-details h3 {
   margin-bottom: 1rem;
   color: #374151;
 }
@@ -247,29 +267,12 @@ watch(() => props.application, () => {
   font-size: 0.875rem;
 }
 
-.status-pending {
-  background-color: #fef3c7;
-  color: #d97706;
-}
-
-.status-approved {
-  background-color: #dcfce7;
-  color: #16a34a;
-}
-
-.status-rejected {
-  background-color: #fee2e2;
-  color: #dc2626;
-}
-
+.status-pending,
+.status-approved,
+.status-rejected,
 .status-error {
-  background-color: #e0e7ff;
-  color: #4338ca;
-}
-
-.review-details h3 {
-  margin-bottom: 1rem;
-  color: #374151;
+  background-color: #f3f4f6;
+  color: #4b5563;
 }
 
 .result-summary {
@@ -279,7 +282,7 @@ watch(() => props.application, () => {
   margin-bottom: 1.5rem;
   padding: 1rem;
   background-color: #f9fafb;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .result-icon {
@@ -291,25 +294,12 @@ watch(() => props.application, () => {
   justify-content: center;
   font-size: 1.5rem;
   font-weight: bold;
-}
-
-.icon-approved {
-  background-color: #dcfce7;
-  color: #16a34a;
-}
-
-.icon-rejected {
-  background-color: #fee2e2;
-  color: #dc2626;
-}
-
-.icon-pending {
-  background-color: #fef3c7;
-  color: #d97706;
+  background-color: #f3f4f6;
+  color: #4b5563;
 }
 
 .result-message .result-title {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: #1f2937;
 }
@@ -336,99 +326,52 @@ watch(() => props.application, () => {
 .suggestions {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: #fef3c7;
-  border-radius: 8px;
+  background-color: #f9fafb;
+  border-radius: 6px;
 }
 
-.suggestions h4 {
+.suggestions h4,
+.raw-response h4 {
   margin-bottom: 0.5rem;
-  color: #d97706;
-}
-
-.suggestions ul {
-  margin: 0;
-  padding-left: 1.5rem;
-}
-
-.suggestions li {
-  margin-bottom: 0.25rem;
-  color: #78350f;
-}
-
-.knowledge-hits {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.knowledge-hits h4 {
-  margin-bottom: 0.75rem;
   color: #374151;
 }
 
-.hit-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 0.9rem 1rem;
-  margin-bottom: 0.8rem;
-  background: #f9fafb;
+.suggestions-textbox,
+.raw-content {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  white-space: pre-wrap;
 }
 
-.hit-card-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-  margin-bottom: 0.55rem;
+.review-actions {
+  margin-top: 1.5rem;
+  text-align: center;
 }
 
-.hit-score {
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-size: 0.85rem;
-  white-space: nowrap;
+.btn-review {
+  padding: 0.65rem 1rem;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.hit-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  font-size: 0.85rem;
-  color: #6b7280;
-  margin-bottom: 0.55rem;
-}
-
-.hit-content {
-  line-height: 1.7;
-  color: #111827;
+.btn-review:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .no-result,
 .no-application {
-  text-align: center;
-  padding: 2rem;
-  color: #9ca3af;
-}
-
-.btn-review {
-  margin-top: 1rem;
-  padding: 0.75rem 1.5rem;
-  background-color: #1e40af;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.btn-review:hover:not(:disabled) {
-  background-color: #1e3a8a;
-}
-
-.btn-review:disabled {
-  background-color: #9ca3af;
-  cursor: not-allowed;
+  color: #6b7280;
+  padding: 0.75rem 0;
 }
 </style>

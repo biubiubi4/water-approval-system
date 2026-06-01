@@ -16,17 +16,16 @@
       </div>
       <div class="form-group">
         <label>附件材料</label>
-        
+
         <div v-if="isEdit && existingFiles.length > 0" class="existing-files">
           <p class="hint-text">当前已上传的文件：</p>
           <ul>
             <li v-for="(f, idx) in existingFiles" :key="idx">{{ f }}</li>
           </ul>
-          <p class="hint-text warning" style="color: #d97706;">若需修改附件，请同时上传最新的申请书、身份证和营业执照以替换。</p>
+          <p class="hint-text warning">若需修改附件，请同时上传最新的申请书、身份证和营业执照以替换。</p>
         </div>
 
         <div class="upload-area-group">
-          <!-- 申请书 -->
           <div class="specific-upload" @click="triggerSpecificFile('appForm')">
             <span class="upload-title">1. 取水许可申请书 *</span>
             <input type="file" ref="appFormInput" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" @change="handleSpecificFile($event, 'appForm')" style="display: none;" />
@@ -36,8 +35,7 @@
               <button type="button" @click.stop="removeSpecificFile('appForm')" class="btn-remove">×</button>
             </div>
           </div>
-          
-          <!-- 身份证 -->
+
           <div class="specific-upload" @click="triggerSpecificFile('idCard')">
             <span class="upload-title">2. 法定代表人身份证 *</span>
             <input type="file" ref="idCardInput" accept=".jpg,.jpeg,.png,.pdf" @change="handleSpecificFile($event, 'idCard')" style="display: none;" />
@@ -48,7 +46,6 @@
             </div>
           </div>
 
-          <!-- 营业执照 -->
           <div class="specific-upload" @click="triggerSpecificFile('bizLicense')">
             <span class="upload-title">3. 营业执照 *</span>
             <input type="file" ref="bizLicenseInput" accept=".jpg,.jpeg,.png,.pdf" @change="handleSpecificFile($event, 'bizLicense')" style="display: none;" />
@@ -60,6 +57,7 @@
           </div>
         </div>
       </div>
+
       <div class="form-actions">
         <button type="submit" :disabled="isSubmitting" class="btn-submit">
           <span v-if="isSubmitting">提交中...</span>
@@ -68,6 +66,7 @@
         <button v-if="isEdit" type="button" @click="cancelEdit" class="btn-cancel">取消</button>
       </div>
     </form>
+
     <div v-if="message" :class="messageClass" class="message">
       {{ message }}
     </div>
@@ -77,6 +76,8 @@
 <script setup>
 import { ref, reactive, watch, computed } from 'vue'
 import axios from 'axios'
+
+const emit = defineEmits(['saved'])
 
 const form = reactive({
   projectName: '',
@@ -154,20 +155,37 @@ const removeSpecificFile = (type) => {
   if (type === 'bizLicense' && bizLicenseInput.value) bizLicenseInput.value.value = ''
 }
 
+const showMessage = (msg, type) => {
+  message.value = msg
+  messageType.value = type
+  setTimeout(() => {
+    message.value = ''
+    messageType.value = ''
+  }, 5000)
+}
+
+const emitSaved = () => {
+  emit('saved')
+}
+
+const cancelEdit = () => {
+  emitSaved()
+}
+
 const submitApplication = async () => {
   const newFiles = []
   if (fileSlots.appForm) newFiles.push(fileSlots.appForm)
   if (fileSlots.idCard) newFiles.push(fileSlots.idCard)
   if (fileSlots.bizLicense) newFiles.push(fileSlots.bizLicense)
 
-  const hasAnyNewFile = newFiles.length > 0;
-  const hasAllNewFiles = newFiles.length === 3;
+  const hasAnyNewFile = newFiles.length > 0
+  const hasAllNewFiles = newFiles.length === 3
 
   if (!isEdit.value && !hasAllNewFiles) {
     showMessage('新建申请需上传完整的申请书、身份证和营业执照', 'error')
     return
   }
-  
+
   if (isEdit.value && hasAnyNewFile && !hasAllNewFiles) {
     showMessage('若要修改附件，请同时上传最新的申请书、身份证和营业执照', 'error')
     return
@@ -180,21 +198,19 @@ const submitApplication = async () => {
   formData.append('projectName', form.projectName)
   formData.append('applicantName', form.applicantName)
   formData.append('applicantId', form.applicantId)
-  
-  newFiles.forEach(file => {
+
+  newFiles.forEach((file) => {
     formData.append('files', file)
   })
 
   try {
-    let response
     if (isEdit.value) {
-      // 编辑：仅在有新文件时上传 files，会替换后端文件
-      response = await axios.put(`/api/applications/${props.application.id}`, formData, {
+      await axios.put(`/api/applications/${props.application.id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       showMessage('修改已保存', 'success')
     } else {
-      response = await axios.post('/api/applications', formData, {
+      const response = await axios.post('/api/applications', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       if (response.status === 201) {
@@ -202,7 +218,6 @@ const submitApplication = async () => {
         resetForm()
       }
     }
-    // 通知父组件刷新列表
     emitSaved()
   } catch (error) {
     showMessage('请求失败: ' + (error.response?.data?.message || error.message), 'error')
@@ -210,43 +225,22 @@ const submitApplication = async () => {
     isSubmitting.value = false
   }
 }
-
-const showMessage = (msg, type) => {
-  message.value = msg
-  messageType.value = type
-  setTimeout(() => {
-    message.value = ''
-    messageType.value = ''
-  }, 5000)
-}
-
-// resetForm declared earlier
-
-const cancelEdit = () => {
-  // 清除选中并返回列表
-  emitSaved()
-}
-
-const emit = defineEmits(['saved'])
-
-const emitSaved = () => {
-  emit('saved')
-}
 </script>
 
 <style scoped>
 .create-application {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 1.25rem;
   max-width: 600px;
   margin: 0 auto;
 }
 
 .create-application h2 {
   margin-bottom: 1.5rem;
-  color: #1e40af;
+  color: #111827;
+  font-size: 1.15rem;
 }
 
 .form {
@@ -268,9 +262,10 @@ const emitSaved = () => {
 
 .form-group input {
   padding: 0.75rem;
-  border: 1px solid #ddd;
+  border: 1px solid #d1d5db;
   border-radius: 4px;
   font-size: 1rem;
+  background: #ffffff;
 }
 
 .upload-area-group {
@@ -282,18 +277,18 @@ const emitSaved = () => {
 .specific-upload {
   flex: 1;
   min-width: 150px;
-  border: 2px dashed #ddd;
-  border-radius: 8px;
-  padding: 1.5rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 1.1rem 0.9rem;
   text-align: center;
   cursor: pointer;
-  background-color: #fafafa;
-  transition: all 0.3s;
+  background-color: #ffffff;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
 .specific-upload:hover {
-  border-color: #3b82f6;
-  background-color: #eff6ff;
+  border-color: #9ca3af;
+  background-color: #f9fafb;
 }
 
 .upload-title {
@@ -322,64 +317,19 @@ const emitSaved = () => {
 .btn-remove {
   background: none;
   border: none;
-  color: #ef4444;
+  color: #6b7280;
   font-size: 1.25rem;
   cursor: pointer;
   padding: 0 0.5rem;
 }
 
-.btn-remove:hover {
-  color: #b91c1c;
-}
-
 .warning {
-  color: #d97706;
-}
-
-.upload-area:hover,
-.upload-area.dragover {
-  border-color: #1e40af;
-}
-
-.upload-hint {
   color: #6b7280;
-}
-
-.upload-hint p {
-  margin: 0.5rem 0;
 }
 
 .hint-text {
   font-size: 0.875rem;
   color: #9ca3af;
-}
-
-.file-list {
-  text-align: left;
-}
-
-.file-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  margin-bottom: 0.5rem;
-}
-
-.btn-remove {
-  background-color: #fee2e2;
-  color: #dc2626;
-  border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .form-actions {
@@ -389,17 +339,17 @@ const emitSaved = () => {
 .btn-submit {
   width: 100%;
   padding: 0.75rem;
-  background-color: #1e40af;
+  background-color: #4b5563;
   color: white;
   border: none;
   border-radius: 4px;
   font-size: 1rem;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s;
 }
 
 .btn-submit:hover:not(:disabled) {
-  background-color: #1e3a8a;
+  background-color: #374151;
 }
 
 .btn-submit:disabled {
@@ -414,13 +364,20 @@ const emitSaved = () => {
   text-align: center;
 }
 
-.message-success {
-  background-color: #dcfce7;
-  color: #16a34a;
+.message-success,
+.message-error {
+  background-color: #f3f4f6;
+  color: #374151;
 }
 
-.message-error {
-  background-color: #fee2e2;
-  color: #dc2626;
+.btn-cancel {
+  margin-top: 0.75rem;
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
 }
 </style>

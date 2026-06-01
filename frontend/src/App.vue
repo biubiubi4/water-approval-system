@@ -8,6 +8,7 @@
         <button @click="currentPage = 'knowledge'" :class="{ active: currentPage === 'knowledge' }">知识库管理</button>
       </nav>
     </header>
+
     <main class="main-content">
       <ApplicationList v-if="currentPage === 'list'" @select-application="viewDetails" @edit-application="editApplication" @review-application="viewResult" />
       <CreateApplication v-if="currentPage === 'create'" :application="selectedApplication" @saved="onSaved" />
@@ -45,7 +46,6 @@ const editApplication = (application) => {
 }
 
 const onSaved = () => {
-  // 清除选中并跳回列表
   selectedApplication.value = null
   currentPage.value = 'list'
 }
@@ -63,43 +63,59 @@ const newApplication = () => {
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f6f7f9;
+  color: #1f2937;
+}
+
 .app-container {
   min-height: 100vh;
-  background-color: #f5f7fa;
+  background: #f6f7f9;
 }
 
 .header {
-  background-color: #1e40af;
-  color: white;
-  padding: 1rem 2rem;
+  background: #ffffff;
+  color: #111827;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .header h1 {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
+  font-size: 1.35rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
 }
 
 .nav {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .nav button {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
 .nav button:hover,
 .nav button.active {
-  background-color: rgba(255, 255, 255, 0.3);
+  background: #f3f4f6;
+  border-color: #9ca3af;
 }
 
 .main-content {
-  padding: 2rem;
+  padding: 1.25rem;
 }
 </style>

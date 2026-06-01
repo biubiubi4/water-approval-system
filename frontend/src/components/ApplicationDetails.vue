@@ -25,7 +25,7 @@
             </div>
             <div class="review-item">
               <span class="review-label">合规性判断</span>
-              <span class="review-value">{{ formatDetailValue(reviewResult.details.compliance) }}</span>
+              <span class="review-value">{{ formatCompliance(reviewResult.details.compliance) }}</span>
             </div>
           </div>
 
@@ -82,20 +82,20 @@ const suggestions = computed(() => {
 
 const getStatusClass = (status) => {
   const classes = {
-    'PENDING': 'status-pending',
-    'APPROVED': 'status-approved',
-    'REJECTED': 'status-rejected',
-    'ERROR': 'status-error'
+    PENDING: 'status-pending',
+    APPROVED: 'status-approved',
+    REJECTED: 'status-rejected',
+    ERROR: 'status-error'
   }
   return classes[status] || 'status-unknown'
 }
 
 const getStatusText = (status) => {
   const texts = {
-    'PENDING': '待审核',
-    'APPROVED': '审核通过',
-    'REJECTED': '审核未通过',
-    'ERROR': '审核异常'
+    PENDING: '待审核',
+    APPROVED: '审核通过',
+    REJECTED: '审核未通过',
+    ERROR: '审核异常'
   }
   return texts[status] || status || '-'
 }
@@ -114,9 +114,21 @@ const formatCompleteness = (value) => {
     return formatDetailValue(value)
   }
 
-  const completeText = value.complete === true ? '完整' : value.complete === false ? '不完整' : '未知'
-  const missingText = Array.isArray(value.missing) && value.missing.length ? `缺少：${value.missing.join('、')}` : ''
-  return [completeText, missingText].filter(Boolean).join('，')
+  const completeText = value.complete === true || value.status === 'PASS' ? '完整' : value.complete === false || value.status === 'FAIL' ? '不完整' : '未知'
+  const missingItems = Array.isArray(value.missing_items) && value.missing_items.length ? `缺少材料：${value.missing_items.join('、')}` : ''
+  const missingFields = Array.isArray(value.missing_fields) && value.missing_fields.length ? `缺少字段：${value.missing_fields.join('、')}` : ''
+  const issues = Array.isArray(value.issues) && value.issues.length ? value.issues.join('；') : ''
+  return [completeText, missingItems, missingFields, issues].filter(Boolean).join('；')
+}
+
+const formatCompliance = (value) => {
+  if (!value || typeof value !== 'object') {
+    return formatDetailValue(value)
+  }
+
+  const passText = value.pass === true || value.status === 'PASS' ? '通过' : value.pass === false || value.status === 'FAIL' ? '不通过' : '未知'
+  const violations = Array.isArray(value.violations) && value.violations.length ? value.violations.join('；') : ''
+  return [passText, violations].filter(Boolean).join('；')
 }
 
 const maskId = (id) => {
@@ -175,21 +187,87 @@ watch(() => props.application?.id, (id) => {
 </script>
 
 <style scoped>
-.application-details { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); max-width: 920px; margin: 0 auto; }
-.application-details h2 { color: #1e40af; margin-bottom: 1rem }
-.section-card { padding: 1rem 0; border-bottom: 1px solid #eef2f7; }
-.section-card:last-child { border-bottom: none; }
-.section-card h3 { margin-bottom: 0.75rem; color: #374151; }
-.row { margin-bottom: 0.5rem }
-.review-message { margin-bottom: 0.75rem; line-height: 1.7; }
-.review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
-.review-item { background: #f9fafb; border-radius: 6px; padding: 0.75rem; }
-.review-label { display: block; font-size: 0.875rem; color: #6b7280; margin-bottom: 0.25rem; }
-.review-value { white-space: pre-line; color: #111827; }
-.suggestions ul, .attachment-list { padding-left: 1.25rem; }
-.suggestions li, .attachment-list li { margin-bottom: 0.4rem; }
-.status-pending { background-color: #fef3c7; color: #d97706; padding: 0.2rem 0.45rem; border-radius: 4px; }
-.status-approved { background-color: #dcfce7; color: #16a34a; padding: 0.2rem 0.45rem; border-radius: 4px; }
-.status-rejected { background-color: #fee2e2; color: #dc2626; padding: 0.2rem 0.45rem; border-radius: 4px; }
-.status-error { background-color: #e0e7ff; color: #4338ca; padding: 0.2rem 0.45rem; border-radius: 4px; }
+.application-details {
+  background: #ffffff;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: none;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.application-details h2 {
+  color: #111827;
+  margin-bottom: 1rem;
+  font-size: 1.15rem;
+}
+
+.section-card {
+  padding: 1rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.section-card:last-child {
+  border-bottom: none;
+}
+
+.section-card h3 {
+  margin-bottom: 0.75rem;
+  color: #374151;
+}
+
+.row {
+  margin-bottom: 0.5rem;
+}
+
+.review-message {
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.review-item {
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.review-label {
+  display: block;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.review-value {
+  white-space: pre-line;
+  color: #111827;
+}
+
+.suggestions ul,
+.attachment-list {
+  padding-left: 1.25rem;
+}
+
+.suggestions li,
+.attachment-list li {
+  margin-bottom: 0.4rem;
+}
+
+.status-pending,
+.status-approved,
+.status-rejected,
+.status-error {
+  background-color: #f3f4f6;
+  color: #4b5563;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+}
 </style>
