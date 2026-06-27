@@ -22,7 +22,7 @@ CHECKLIST = [
         "aliases": ["身份证", "身份证明", "法人证明", "法人身份证", "id card"],
     },
 ]
-
+ 
 
 def _normalize_text(value: Any) -> str:
     return str(value).strip().lower()

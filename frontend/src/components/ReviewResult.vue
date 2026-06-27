@@ -73,6 +73,16 @@
           </button>
         </div>
 
+        <div v-if="reviewSuggestions.length > 0" class="suggestions-section">
+          <h4>修改建议</h4>
+          <textarea
+            readonly
+            class="suggestions-textarea"
+            rows="8"
+            :value="reviewSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')"
+          ></textarea>
+        </div>
+
         <div v-if="application.reviewResult" class="raw-response">
           <h4>原始返回内容</h4>
           <pre class="raw-content">{{ rawReviewText }}</pre>
@@ -179,6 +189,19 @@ const rawReviewText = computed(() => {
   } catch (error) {
     return String(value)
   }
+})
+
+const reviewSuggestions = computed(() => {
+  if (!reviewResult.value) return []
+  // 优先从 reviewResult 根级别获取 suggestions
+  if (Array.isArray(reviewResult.value.suggestions)) {
+    return reviewResult.value.suggestions
+  }
+  // 如果根级别没有，从 details 中获取
+  if (reviewResult.value.details && Array.isArray(reviewResult.value.details.suggestions)) {
+    return reviewResult.value.details.suggestions
+  }
+  return []
 })
 
 const parseReviewResult = () => {
@@ -337,6 +360,7 @@ watch(() => props.application, () => {
 }
 
 .suggestions-textbox,
+.suggestions-textarea,
 .raw-content {
   width: 100%;
   padding: 0.75rem;
@@ -348,6 +372,20 @@ watch(() => props.application, () => {
   font-size: 0.9rem;
   resize: vertical;
   white-space: pre-wrap;
+}
+
+.suggestions-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #fffbeb;
+  border: 1px solid #fef3c7;
+  border-radius: 6px;
+}
+
+.suggestions-section h4 {
+  margin-bottom: 0.75rem;
+  color: #92400e;
+  font-weight: 600;
 }
 
 .review-actions {
