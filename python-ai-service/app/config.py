@@ -15,6 +15,19 @@ class Settings(BaseSettings):
     embedding_model_name: str = "BAAI/bge-small-zh-v1.5"
     embedding_fallback_provider: str = "hash"
 
+    # PDF reader configuration
+    pdf_reader_provider: str = "auto"
+    pdf_reader_min_chars: int = 80
+    pdf_reader_qwen_model: str = "qwen-vl-plus-latest"
+    pdf_reader_max_pages: int = 20
+    pdf_reader_render_zoom: float = 2.0
+
+    # Semantic retrieval tuning
+    semantic_search_candidate_k: int = 12
+    semantic_search_max_variants: int = 4
+    semantic_search_lexical_weight: float = 0.35
+    semantic_search_vector_weight: float = 0.65
+
     # External AI integration (optional)
     external_ai_enabled: bool = False
     # API key/token for DashScope compatible OpenAI API (or other compatible providers)

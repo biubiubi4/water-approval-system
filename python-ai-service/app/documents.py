@@ -34,6 +34,9 @@ except ImportError:
     UnstructuredURLLoader = None  # type: ignore[assignment]
     WebBaseLoader = None  # type: ignore[assignment]
 
+from app.config import settings
+from app.pdf_reader import load_pdf_with_qwen
+
 
 def _load_documents_from_loader(loader: object) -> List[Document]:
     try:
@@ -161,8 +164,14 @@ def load_pdf(file_path: Path) -> List[Document]:
     try:
         loader = _create_pdf_loader(file_path, extract_images=True)
         documents = _normalize_documents(loader.load(), file_path)
-        if documents:
+        extracted_chars = sum(len(document.page_content.strip()) for document in documents)
+        if documents and extracted_chars >= settings.pdf_reader_min_chars:
             return documents
+
+        if settings.pdf_reader_provider in {"auto", "qwen", "qwen_vl", "qwen-vl"}:
+            qwen_documents = load_pdf_with_qwen(file_path)
+            if qwen_documents:
+                return qwen_documents
 
         fallback_loader = _create_pdf_loader(file_path, extract_images=False)
         return _normalize_documents(fallback_loader.load(), file_path)

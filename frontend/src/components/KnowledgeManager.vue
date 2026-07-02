@@ -211,11 +211,12 @@
         >
           <div class="semantic-result-head">
             <strong>命中 {{ item.rank }}</strong>
-            <span class="semantic-score">相似度 {{ formatSimilarity(item.similarity) }}</span>
+            <span class="semantic-score">综合相关度 {{ formatSimilarity(item.similarity) }}</span>
           </div>
           <div class="semantic-meta">
             <span>来源：{{ item.source || '-' }}</span>
-            <span>分数：{{ formatScore(item.score) }}</span>
+            <span>向量相似度：{{ formatSimilarity(item.vector_similarity) }}</span>
+            <span>综合分数：{{ formatScore(item.score) }}</span>
             <span v-if="item.page != null">页码：{{ item.page }}</span>
             <span v-if="item.chunk != null">分块：{{ item.chunk }}</span>
           </div>
