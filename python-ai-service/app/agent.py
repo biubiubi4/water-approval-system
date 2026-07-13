@@ -13,7 +13,7 @@ from app.documents import process_documents
 from app.vector_store import vector_store
 from app.config import settings
 from app.llm_client import llm_client
-from app.review_rules import evaluate_application_rules
+from app.review_rules import RULE_VERSION, build_completeness_from_rules, evaluate_application_rules
 
 
 SYSTEM_PROMPT = """你是一个专业的涉水审批智能审核助手。请按照以下步骤进行审核：
@@ -104,6 +104,7 @@ class WaterApprovalAgent:
                     "fallback_to_local_rules": False,
                     "fallback_reason": "",
                     "qwen_decision_reason": "",
+                    "rule_version": RULE_VERSION,
                 }
             },
             "suggestions": [],
@@ -114,6 +115,7 @@ class WaterApprovalAgent:
 
         pre_rules = evaluate_application_rules(application_data)
         result["details"]["fast_rules"] = pre_rules
+        result["details"]["completeness"] = build_completeness_from_rules(pre_rules)
         if pre_rules.get("should_block"):
             ai_review_trace["fallback_to_local_rules"] = True
             ai_review_trace["fallback_reason"] = "fast_rule_blocker_before_document_parse"
@@ -156,21 +158,12 @@ class WaterApprovalAgent:
 
         full_rules = evaluate_application_rules(application_data, loaded_documents)
         result["details"]["fast_rules"] = full_rules
+        result["details"]["completeness"] = build_completeness_from_rules(full_rules)
         if full_rules.get("should_block"):
             ai_review_trace["fallback_to_local_rules"] = True
             ai_review_trace["fallback_reason"] = "fast_rule_blocker_after_document_parse"
             print("[规则审查] 附件解析后命中硬性规则，跳过 Qwen 审查")
             return self._reject_by_fast_rules(result, full_rules)
-
-        # 步骤1：完整性检查
-        try:
-            completeness = execute_tool("check_completeness", {"application": application_data})
-            completeness["status"] = "PASS" if completeness.get("complete") else "FAIL"
-            result["details"]["completeness"] = completeness
-        except Exception as e:
-            result["status"] = "ERROR"
-            result["message"] = f"完整性检查失败: {str(e)}"
-            return result
         
         # 步骤2：搜索相关法规
         try:

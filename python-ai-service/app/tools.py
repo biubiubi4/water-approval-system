@@ -5,11 +5,9 @@ from typing import Any, Dict, List
 
 from app.config import settings
 from app.review_rules import (
-    REQUIRED_FIELDS,
-    REQUIRED_MATERIAL_GROUPS,
+    build_completeness_from_rules,
     collect_material_names,
     evaluate_application_rules,
-    match_material_group,
 )
 from app.vector_store import vector_store
 
@@ -145,10 +143,6 @@ def _flatten_materials(application: Dict[str, Any] | List[str] | None, materials
     return collect_material_names(application, materials)
 
 
-def _match_required_item(required: Dict[str, Any], submitted_materials: List[str]) -> bool:
-    return match_material_group(required, submitted_materials)
-
-
 def knowledge_search(query: str, top_k: int = 4) -> List[Dict[str, Any]]:
     if not query.strip():
         return []
@@ -232,46 +226,9 @@ def check_completeness(
     materials: List[str] | None = None,
 ) -> Dict[str, Any]:
     submitted_materials = _flatten_materials(application, materials)
-
-    matched_items = [
-        item["name"] for item in REQUIRED_MATERIAL_GROUPS if _match_required_item(item, submitted_materials)
-    ]
-
-    missing_required_items = [
-        item["name"] for item in REQUIRED_MATERIAL_GROUPS if not _match_required_item(item, submitted_materials)
-    ]
-
-    missing_fields = []
-    if isinstance(application, dict):
-        missing_fields = [field["name"] for field in REQUIRED_FIELDS if not application.get(field["name"])]
-
-    issues: List[str] = []
-    issues.extend(f"缺少必备材料: {item}" for item in missing_required_items)
-
-    if isinstance(application, dict):
-        attachments = application.get("attachments") or []
-        if not isinstance(attachments, list):
-            issues.append("attachments 必须是文件列表")
-        elif not attachments:
-            issues.append("未上传任何附件")
-
-    if missing_fields:
-        issues.extend(f"缺少字段: {field}" for field in missing_fields)
-
     rule_result = evaluate_application_rules(
         application if isinstance(application, dict) else {},
         materials=submitted_materials,
         check_fields=isinstance(application, dict),
     )
-    complete = not bool(rule_result.get("blockers")) and len(issues) == 0
-
-    return {
-        "complete": complete,
-        "submitted_materials": submitted_materials,
-        "required_checklist": [item["name"] for item in REQUIRED_MATERIAL_GROUPS],
-        "matched_items": matched_items,
-        "missing_items": missing_required_items,
-        "missing_fields": missing_fields,
-        "issues": issues,
-        "fast_rules": rule_result,
-    }
+    return build_completeness_from_rules(rule_result, submitted_materials=submitted_materials)

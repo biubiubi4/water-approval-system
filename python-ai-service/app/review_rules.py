@@ -5,6 +5,9 @@ from datetime import date
 from typing import Any, Dict, Iterable, List
 
 
+RULE_VERSION = "2026-07-13-standard-application-form-v3"
+
+
 REQUIRED_FIELDS = [
     {"name": "applicant_name", "label": "申请人或申请单位", "document_labels": ["申请人", "申请人（盖章）"]},
     {"name": "applicant_id", "label": "证件号或统一社会信用代码", "document_labels": ["统一社会信用代码", "身份证号码"]},
@@ -120,6 +123,7 @@ def evaluate_application_rules(
     status = "BLOCKER" if blockers else "WARNING" if warnings else "PASS"
 
     return {
+        "rule_version": RULE_VERSION,
         "status": status,
         "passed": not blockers,
         "should_block": bool(blockers),
@@ -132,6 +136,56 @@ def evaluate_application_rules(
         "required_fields": [field["name"] for field in REQUIRED_FIELDS],
         "required_materials": [group["name"] for group in REQUIRED_MATERIAL_GROUPS],
     }
+
+
+def build_completeness_from_rules(
+    rule_result: Dict[str, Any],
+    submitted_materials: List[str] | None = None,
+) -> Dict[str, Any]:
+    blockers = [
+        issue for issue in rule_result.get("issues", [])
+        if issue.get("severity") == "BLOCKER"
+    ]
+    missing_items = [
+        str(issue.get("message", "")).removeprefix("缺少材料：")
+        for issue in blockers
+        if str(issue.get("code", "")).startswith("missing_material_")
+    ]
+    missing_fields = [
+        str(issue.get("field"))
+        for issue in blockers
+        if str(issue.get("code", "")).startswith("missing_field_") and issue.get("field")
+    ]
+    issues = [str(issue.get("message")) for issue in blockers if issue.get("message")]
+
+    complete = len(blockers) == 0
+    return {
+        "complete": complete,
+        "status": "PASS" if complete else "FAIL",
+        "rule_version": rule_result.get("rule_version", RULE_VERSION),
+        "submitted_materials": submitted_materials if submitted_materials is not None else rule_result.get("submitted_materials", []),
+        "required_checklist": rule_result.get("required_materials", []),
+        "matched_items": _matched_required_materials(
+            submitted_materials if submitted_materials is not None else rule_result.get("submitted_materials", []),
+            rule_result.get("required_materials", []),
+        ),
+        "missing_items": missing_items,
+        "missing_fields": missing_fields,
+        "issues": issues,
+        "warnings": [issue.get("message") for issue in rule_result.get("warnings", []) if issue.get("message")],
+        "fast_rules": rule_result,
+    }
+
+
+def _matched_required_materials(submitted_materials: List[str], required_materials: List[str]) -> List[str]:
+    matched: List[str] = []
+    for group in REQUIRED_MATERIAL_GROUPS:
+        name = group["name"]
+        if name not in required_materials:
+            continue
+        if match_material_group(group, submitted_materials):
+            matched.append(name)
+    return matched
 
 
 def _check_required_fields(application: Dict[str, Any], issues: List[Dict[str, Any]], document_text: str = "") -> None:
