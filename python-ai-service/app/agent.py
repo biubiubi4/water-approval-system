@@ -13,6 +13,7 @@ from app.documents import process_documents
 from app.vector_store import vector_store
 from app.config import settings
 from app.llm_client import llm_client
+from app.review_rules import evaluate_application_rules
 
 
 SYSTEM_PROMPT = """你是一个专业的涉水审批智能审核助手。请按照以下步骤进行审核：
@@ -86,13 +87,38 @@ class WaterApprovalAgent:
     
     def review(self, application_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行审核"""
+        review_mode = str(getattr(settings, "review_mode", "smart") or "smart").lower()
+        if review_mode not in {"fast", "smart", "strict"}:
+            review_mode = "smart"
+
         result = {
             "status": "PENDING",
             "message": "",
-            "details": {},
+            "details": {
+                "ai_review_trace": {
+                    "review_mode": review_mode,
+                    "external_ai_enabled": bool(self.llm and getattr(self.llm, "enabled", False)),
+                    "provider": getattr(self.llm, "provider", None),
+                    "model": getattr(self.llm, "model", None),
+                    "used_external_ai": False,
+                    "fallback_to_local_rules": False,
+                    "fallback_reason": "",
+                    "qwen_decision_reason": "",
+                }
+            },
             "suggestions": [],
             "knowledge_hits": [],
         }
+
+        ai_review_trace = result["details"]["ai_review_trace"]
+
+        pre_rules = evaluate_application_rules(application_data)
+        result["details"]["fast_rules"] = pre_rules
+        if pre_rules.get("should_block"):
+            ai_review_trace["fallback_to_local_rules"] = True
+            ai_review_trace["fallback_reason"] = "fast_rule_blocker_before_document_parse"
+            print("[规则审查] 命中硬性规则，跳过附件解析与 Qwen 审查")
+            return self._reject_by_fast_rules(result, pre_rules)
 
         file_paths = self._resolve_application_file_paths(application_data)
         loaded_documents = []
@@ -102,11 +128,16 @@ class WaterApprovalAgent:
                 {
                     "file_path": doc.metadata.get("file_path"),
                     "source": doc.metadata.get("source"),
+                    "reader": doc.metadata.get("reader"),
+                    "page": doc.metadata.get("page"),
                     "chunk_index": doc.metadata.get("chunk_index"),
+                    "document_cache_hit": doc.metadata.get("document_cache_hit"),
+                    "document_cache_key": doc.metadata.get("document_cache_key"),
                     "preview": doc.page_content[:300],
                 }
                 for doc in loaded_documents
             ]
+            result["details"]["document_cache"] = self._build_document_cache_summary(loaded_documents)
 
             if not loaded_documents:
                 result["status"] = "ERROR"
@@ -115,7 +146,22 @@ class WaterApprovalAgent:
                 return result
         else:
             result["details"]["attachment_documents"] = []
-        
+            result["details"]["document_cache"] = {
+                "enabled": bool(getattr(settings, "document_cache_enabled", True)),
+                "total_chunks": 0,
+                "hit_chunks": 0,
+                "miss_chunks": 0,
+                "files": [],
+            }
+
+        full_rules = evaluate_application_rules(application_data, loaded_documents)
+        result["details"]["fast_rules"] = full_rules
+        if full_rules.get("should_block"):
+            ai_review_trace["fallback_to_local_rules"] = True
+            ai_review_trace["fallback_reason"] = "fast_rule_blocker_after_document_parse"
+            print("[规则审查] 附件解析后命中硬性规则，跳过 Qwen 审查")
+            return self._reject_by_fast_rules(result, full_rules)
+
         # 步骤1：完整性检查
         try:
             completeness = execute_tool("check_completeness", {"application": application_data})
@@ -135,17 +181,15 @@ class WaterApprovalAgent:
             print(f"知识库搜索失败: {e}")
 
         # 步骤3：合规性判断（优先使用外部AI，如未配置则回退到本地规则）
-        ai_review_trace = {
-            "external_ai_enabled": bool(self.llm and getattr(self.llm, "enabled", False)),
-            "provider": getattr(self.llm, "provider", None),
-            "model": getattr(self.llm, "model", None),
-            "used_external_ai": False,
-            "fallback_to_local_rules": False,
-            "fallback_reason": "",
-        }
-        result["details"]["ai_review_trace"] = ai_review_trace
+        should_call_qwen, decision_reason = self._should_call_external_ai(
+            review_mode,
+            full_rules,
+            result["knowledge_hits"],
+            loaded_documents,
+        )
+        ai_review_trace["qwen_decision_reason"] = decision_reason
 
-        if self.llm and getattr(self.llm, "enabled", False):
+        if should_call_qwen and self.llm and getattr(self.llm, "enabled", False):
             llm_resp = self.llm.generate_review(application_data, result["knowledge_hits"], loaded_documents)
             if llm_resp is None:
                 # 没有有效配置，回退到本地实现
@@ -186,8 +230,8 @@ class WaterApprovalAgent:
                     self._apply_local_decision(result, compliance_result)
         else:
             ai_review_trace["fallback_to_local_rules"] = True
-            ai_review_trace["fallback_reason"] = "external_ai_disabled"
-            print("[AI审核] 外部AI未启用，使用本地规则审查")
+            ai_review_trace["fallback_reason"] = decision_reason
+            print(f"[AI审核] 未调用外部AI，使用本地规则审查: {decision_reason}")
             compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
             compliance_result["status"] = "PASS" if compliance_result.get("pass") else "FAIL"
             result["details"]["compliance"] = compliance_result
@@ -219,6 +263,98 @@ class WaterApprovalAgent:
                 result["message"] = "申请审核通过"
         
         return result
+
+    def _reject_by_fast_rules(self, result: Dict[str, Any], rule_result: Dict[str, Any]) -> Dict[str, Any]:
+        suggestions = [str(issue.get("message")) for issue in rule_result.get("blockers", [])]
+        if not suggestions:
+            suggestions = [str(issue.get("message")) for issue in rule_result.get("issues", [])]
+
+        result["status"] = "REJECTED"
+        result["message"] = "申请材料存在硬性规则问题"
+        result["suggestions"] = suggestions
+        result["details"]["compliance"] = {
+            "pass": False,
+            "status": "FAIL",
+            "violations": suggestions,
+        }
+        return result
+
+    def _should_call_external_ai(
+        self,
+        review_mode: str,
+        rule_result: Dict[str, Any],
+        knowledge_hits: List[Dict[str, Any]],
+        documents: List[Any],
+    ) -> tuple[bool, str]:
+        if review_mode == "fast":
+            return False, "review_mode_fast"
+
+        if not (self.llm and getattr(self.llm, "enabled", False)):
+            return False, "external_ai_disabled"
+
+        if review_mode == "strict":
+            return True, "review_mode_strict"
+
+        if rule_result.get("should_use_external_ai"):
+            return True, "fast_rule_warning_requires_review"
+
+        if self._has_restrictive_knowledge(knowledge_hits):
+            return True, "restrictive_knowledge_hit"
+
+        if self._has_complex_documents(documents):
+            return True, "complex_attachment_documents"
+
+        return False, "smart_mode_no_risk_signal"
+
+    def _has_restrictive_knowledge(self, knowledge_hits: List[Dict[str, Any]]) -> bool:
+        keywords = ["禁止", "不得", "限制", "不予批准", "保护区"]
+        for hit in knowledge_hits:
+            content = str(hit.get("content") or "")
+            if any(keyword in content for keyword in keywords):
+                return True
+        return False
+
+    def _has_complex_documents(self, documents: List[Any]) -> bool:
+        if len(documents) >= 4:
+            return True
+        total_chars = sum(len(str(getattr(document, "page_content", "") or "")) for document in documents)
+        return total_chars >= 1200
+
+    def _build_document_cache_summary(self, documents: List[Any]) -> Dict[str, Any]:
+        files: Dict[str, Dict[str, Any]] = {}
+        hit_chunks = 0
+        miss_chunks = 0
+
+        for document in documents:
+            metadata = getattr(document, "metadata", {}) or {}
+            file_path = str(metadata.get("file_path") or metadata.get("source") or "附件")
+            cache_hit = metadata.get("document_cache_hit")
+            if cache_hit is True:
+                hit_chunks += 1
+            elif cache_hit is False:
+                miss_chunks += 1
+
+            item = files.setdefault(
+                file_path,
+                {
+                    "file_path": file_path,
+                    "source": metadata.get("source"),
+                    "reader": metadata.get("reader"),
+                    "document_cache_hit": cache_hit,
+                    "chunk_count": 0,
+                },
+            )
+            item["chunk_count"] += 1
+            if item.get("reader") is None and metadata.get("reader"):
+                item["reader"] = metadata.get("reader")
+
+        return {
+            "enabled": bool(getattr(settings, "document_cache_enabled", True)),
+            "total_chunks": len(documents),
+            "hit_chunks": hit_chunks,
+            "miss_chunks": miss_chunks,
+            "files": list(files.values()),
+        }
     
     def _build_search_query(self, application: Dict[str, Any], documents: List[Any] | None = None) -> str:
         """构建搜索查询"""

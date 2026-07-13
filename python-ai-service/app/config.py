@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     semantic_search_lexical_weight: float = 0.35
     semantic_search_vector_weight: float = 0.65
 
+    # Review flow mode: fast, smart, or strict.
+    # fast: rules + retrieval only; smart: call external AI only for risky cases; strict: always call external AI.
+    review_mode: str = "smart"
+
+    # Document parse cache. Keeps extracted text by file SHA256 to avoid repeated OCR/PDF parsing.
+    document_cache_enabled: bool = True
+    document_cache_dir: Path = Path(__file__).resolve().parent.parent / "data" / "document_cache"
+
     # External AI integration (optional)
     external_ai_enabled: bool = False
     # API key/token for DashScope compatible OpenAI API (or other compatible providers)

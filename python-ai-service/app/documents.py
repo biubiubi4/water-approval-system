@@ -35,6 +35,7 @@ except ImportError:
     WebBaseLoader = None  # type: ignore[assignment]
 
 from app.config import settings
+from app.document_cache import load_cached_documents, mark_cache_miss, write_cached_documents
 from app.pdf_reader import load_pdf_with_qwen
 
 
@@ -300,8 +301,7 @@ def load_image(file_path: Path) -> List[Document]:
         return []
 
 
-def load_document(file_path: Path) -> List[Document]:
-    """根据文件类型加载文档"""
+def _load_document_uncached(file_path: Path) -> List[Document]:
     suffix = file_path.suffix.lower()
     
     if suffix == ".pdf":
@@ -320,6 +320,21 @@ def load_document(file_path: Path) -> List[Document]:
         return load_image(file_path)
     else:
         return load_generic_file(file_path)
+
+
+def load_document(file_path: Path) -> List[Document]:
+    """根据文件类型加载文档，并优先复用解析缓存。"""
+    cached_documents = load_cached_documents(file_path)
+    if cached_documents is not None:
+        return cached_documents
+
+    documents = _load_document_uncached(file_path)
+    if not documents:
+        return []
+
+    documents = mark_cache_miss(file_path, documents)
+    write_cached_documents(file_path, documents)
+    return documents
 
 
 def process_documents(

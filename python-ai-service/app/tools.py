@@ -4,26 +4,15 @@ import re
 from typing import Any, Dict, List
 
 from app.config import settings
+from app.review_rules import (
+    REQUIRED_FIELDS,
+    REQUIRED_MATERIAL_GROUPS,
+    collect_material_names,
+    evaluate_application_rules,
+    match_material_group,
+)
 from app.vector_store import vector_store
 
-
-REQUIRED_FIELDS = ["applicant_name", "applicant_id", "project_name", "attachments"]
-
-
-CHECKLIST = [
-    {
-        "name": "取水许可申请书",
-        "aliases": ["申请书", "取水申请书", "申请表", "water application form"],
-    },
-    {
-        "name": "营业执照",
-        "aliases": ["营业执照", "主体资格", "法人证书", "信用代码证"],
-    },
-    {
-        "name": "身份证",
-        "aliases": ["身份证", "身份证明", "法人证明", "法人身份证", "id card"],
-    },
-]
 
 _STOPWORDS = {
     "以及",
@@ -153,40 +142,11 @@ def _combine_scores(vector_similarity: float, lexical_score: float) -> float:
 
 
 def _flatten_materials(application: Dict[str, Any] | List[str] | None, materials: List[str] | None) -> List[str]:
-    if materials:
-        return [str(item) for item in materials if str(item).strip()]
-
-    if isinstance(application, list):
-        return [str(item) for item in application if str(item).strip()]
-
-    if not isinstance(application, dict):
-        return []
-
-    collected: List[str] = []
-    attachments = application.get("attachments")
-    if isinstance(attachments, list):
-        collected.extend(str(item) for item in attachments if str(item).strip())
-
-    for field in ["application_form", "id_proof", "subject_qualification", "relation_statement", "assessment_report", "project_materials"]:
-        value = application.get(field)
-        if value:
-            collected.append(str(value))
-
-    for key in ["applicant_name", "applicant_id", "project_name", "water_use", "location"]:
-        value = application.get(key)
-        if value:
-            collected.append(f"{key}:{value}")
-
-    return collected
+    return collect_material_names(application, materials)
 
 
 def _match_required_item(required: Dict[str, Any], submitted_materials: List[str]) -> bool:
-    candidates = [required["name"], *required.get("aliases", [])]
-    normalized_materials = [_normalize_text(item) for item in submitted_materials]
-    return any(
-        any(candidate.lower() in material for material in normalized_materials)
-        for candidate in candidates
-    )
+    return match_material_group(required, submitted_materials)
 
 
 def knowledge_search(query: str, top_k: int = 4) -> List[Dict[str, Any]]:
@@ -274,16 +234,16 @@ def check_completeness(
     submitted_materials = _flatten_materials(application, materials)
 
     matched_items = [
-        item["name"] for item in CHECKLIST if _match_required_item(item, submitted_materials)
+        item["name"] for item in REQUIRED_MATERIAL_GROUPS if _match_required_item(item, submitted_materials)
     ]
 
     missing_required_items = [
-        item["name"] for item in CHECKLIST if not _match_required_item(item, submitted_materials)
+        item["name"] for item in REQUIRED_MATERIAL_GROUPS if not _match_required_item(item, submitted_materials)
     ]
 
     missing_fields = []
     if isinstance(application, dict):
-        missing_fields = [field for field in REQUIRED_FIELDS if not application.get(field)]
+        missing_fields = [field["name"] for field in REQUIRED_FIELDS if not application.get(field["name"])]
 
     issues: List[str] = []
     issues.extend(f"缺少必备材料: {item}" for item in missing_required_items)
@@ -298,14 +258,20 @@ def check_completeness(
     if missing_fields:
         issues.extend(f"缺少字段: {field}" for field in missing_fields)
 
-    complete = len(missing_required_items) == 0 and len(issues) == 0
+    rule_result = evaluate_application_rules(
+        application if isinstance(application, dict) else {},
+        materials=submitted_materials,
+        check_fields=isinstance(application, dict),
+    )
+    complete = not bool(rule_result.get("blockers")) and len(issues) == 0
 
     return {
         "complete": complete,
         "submitted_materials": submitted_materials,
-        "required_checklist": [item["name"] for item in CHECKLIST],
+        "required_checklist": [item["name"] for item in REQUIRED_MATERIAL_GROUPS],
         "matched_items": matched_items,
         "missing_items": missing_required_items,
         "missing_fields": missing_fields,
         "issues": issues,
+        "fast_rules": rule_result,
     }
