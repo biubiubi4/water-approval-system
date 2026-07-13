@@ -6,11 +6,11 @@ from typing import Any, Dict, Iterable, List
 
 
 REQUIRED_FIELDS = [
-    {"name": "applicant_name", "label": "申请人或申请单位"},
-    {"name": "applicant_id", "label": "证件号或统一社会信用代码"},
-    {"name": "project_name", "label": "项目名称"},
-    {"name": "water_use", "label": "取水用途"},
-    {"name": "location", "label": "取水地点"},
+    {"name": "applicant_name", "label": "申请人或申请单位", "document_labels": ["申请人", "申请人（盖章）"]},
+    {"name": "applicant_id", "label": "证件号或统一社会信用代码", "document_labels": ["统一社会信用代码", "身份证号码"]},
+    {"name": "project_name", "label": "项目名称", "document_labels": ["项目名称"]},
+    {"name": "water_use", "label": "取水用途", "document_labels": ["取水用途"]},
+    {"name": "location", "label": "取水地点", "document_labels": ["取水地点", "取水口位置"]},
 ]
 
 
@@ -19,16 +19,13 @@ REQUIRED_MATERIAL_GROUPS = [
         "name": "取水许可申请书",
         "severity": "BLOCKER",
         "aliases": ["取水许可申请书", "取水申请书", "申请书", "申请表", "water application form"],
+        "document_keywords": ["取水许可申请书", "取水许可申请", "申请人基本情况", "项目基本情况", "运行期年取水量"],
     },
     {
         "name": "身份证或营业执照",
         "severity": "BLOCKER",
         "aliases": ["身份证", "身份证明", "营业执照", "统一社会信用代码", "主体资格", "法人证书", "信用代码证"],
-    },
-    {
-        "name": "水资源论证相关材料",
-        "severity": "WARNING",
-        "aliases": ["水资源论证", "论证报告", "取水论证", "水资源评价", "可研报告"],
+        "document_keywords": ["营业执照", "居民身份证", "中华人民共和国居民身份证", "法定代表人身份证"],
     },
 ]
 
@@ -38,6 +35,10 @@ PLACEHOLDER_VALUES = {"", "无", "暂无", "待补充", "未填写", "空", "non
 
 def normalize_text(value: Any) -> str:
     return str(value or "").strip().lower()
+
+
+def compact_text(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "")).lower()
 
 
 def collect_material_names(application: Dict[str, Any] | List[str] | None, materials: List[str] | None = None) -> List[str]:
@@ -80,6 +81,17 @@ def match_material_group(group: Dict[str, Any], material_names: Iterable[str]) -
     )
 
 
+def match_material_group_in_text(group: Dict[str, Any], document_text: str) -> bool:
+    text = compact_text(document_text)
+    if not text:
+        return False
+
+    for keyword in group.get("document_keywords", []):
+        if compact_text(keyword) in text:
+            return True
+    return False
+
+
 def evaluate_application_rules(
     application: Dict[str, Any] | None,
     documents: List[Any] | None = None,
@@ -94,9 +106,9 @@ def evaluate_application_rules(
     issues: List[Dict[str, Any]] = []
 
     if check_fields:
-        _check_required_fields(app, issues)
-    _check_required_materials(material_names, issues)
-    _check_application_form_rules(app, issues)
+        _check_required_fields(app, issues, document_text)
+    _check_required_materials(material_names, issues, document_text, has_document_items=bool(document_items))
+    _check_application_form_rules(app, issues, document_text)
 
     if document_items:
         _check_attachment_type_consistency(document_items, issues)
@@ -122,20 +134,35 @@ def evaluate_application_rules(
     }
 
 
-def _check_required_fields(application: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+def _check_required_fields(application: Dict[str, Any], issues: List[Dict[str, Any]], document_text: str = "") -> None:
     for field in REQUIRED_FIELDS:
         value = normalize_text(application.get(field["name"]))
-        if value in PLACEHOLDER_VALUES:
+        if value in PLACEHOLDER_VALUES and not _document_has_field(field, document_text):
+            severity = "BLOCKER"
+            if not document_text and field["name"] in {"project_name", "water_use", "location"}:
+                severity = "WARNING"
             _add_issue(
                 issues,
                 code=f"missing_field_{field['name']}",
-                severity="BLOCKER",
+                severity=severity,
                 message=f"缺少必填字段：{field['label']}",
                 field=field["name"],
             )
 
 
-def _check_required_materials(material_names: List[str], issues: List[Dict[str, Any]]) -> None:
+def _document_has_field(field: Dict[str, Any], document_text: str) -> bool:
+    text = compact_text(document_text)
+    if not text:
+        return False
+    return any(compact_text(label) in text for label in field.get("document_labels", []))
+
+
+def _check_required_materials(
+    material_names: List[str],
+    issues: List[Dict[str, Any]],
+    document_text: str = "",
+    has_document_items: bool = False,
+) -> None:
     if not material_names:
         _add_issue(
             issues,
@@ -146,16 +173,24 @@ def _check_required_materials(material_names: List[str], issues: List[Dict[str, 
         return
 
     for group in REQUIRED_MATERIAL_GROUPS:
-        if not match_material_group(group, material_names):
+        if not match_material_group(group, material_names) and not match_material_group_in_text(group, document_text):
+            if not has_document_items:
+                severity = "WARNING"
+            else:
+                severity = str(group.get("severity", "WARNING"))
             _add_issue(
                 issues,
                 code=f"missing_material_{group['name']}",
-                severity=str(group.get("severity", "WARNING")),
+                severity=severity,
                 message=f"缺少材料：{group['name']}",
             )
 
 
-def _check_application_form_rules(application: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+def _check_application_form_rules(
+    application: Dict[str, Any],
+    issues: List[Dict[str, Any]],
+    document_text: str = "",
+) -> None:
     water_use = str(application.get("water_use") or "").strip()
     other_detail = str(
         application.get("water_use_detail")
@@ -163,7 +198,14 @@ def _check_application_form_rules(application: Dict[str, Any], issues: List[Dict
         or application.get("water_use_description")
         or ""
     ).strip()
-    if water_use in {"其他", "其它"} and not other_detail:
+    document_compact = compact_text(document_text)
+    document_selects_other = any(
+        marker in document_compact
+        for marker in ["√其他用水", "☑其他用水", "√其他", "☑其他"]
+    )
+    document_has_other_detail = bool(re.search(r"(其他用水|其他)[^。；;\n（）()]{0,20}[：:（(]\s*[\u4e00-\u9fffA-Za-z0-9]{2,}", document_text))
+
+    if (water_use in {"其他", "其它"} and not other_detail) or (document_selects_other and not document_has_other_detail):
         _add_issue(
             issues,
             code="missing_other_water_use_detail",
@@ -198,7 +240,7 @@ def _check_attachment_type_consistency(document_items: List[Dict[str, str]], iss
             )
 
         if any(key in source_text for key in ["申请书", "申请表"]) and not any(
-            key in content for key in ["取水许可", "取水申请", "申请人", "申请单位"]
+            key in content for key in ["取水许可", "取水申请", "申请人", "申请单位", "申请人基本情况", "项目基本情况"]
         ):
             _add_issue(
                 issues,
