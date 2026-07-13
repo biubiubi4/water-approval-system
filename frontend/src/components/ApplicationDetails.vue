@@ -52,6 +52,41 @@
             </ul>
           </div>
 
+          <div v-if="complianceDimensions.length" class="trace-block">
+            <h4>合规维度</h4>
+            <div class="dimension-list">
+              <div v-for="item in complianceDimensions" :key="item.code" class="dimension-item">
+                <div class="dimension-header">
+                  <span>{{ item.name || item.code }}</span>
+                  <span :class="getDimensionStatusClass(item.status)" class="dimension-status">{{ formatDimensionStatus(item.status) }}</span>
+                </div>
+                <ul v-if="Array.isArray(item.findings) && item.findings.length">
+                  <li v-for="(finding, index) in item.findings" :key="index">{{ finding.severity }}：{{ finding.message }}</li>
+                </ul>
+                <p v-else-if="item.reason">{{ item.reason }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="ragEvidenceItems.length" class="trace-block">
+            <h4>法规依据</h4>
+            <ul>
+              <li v-for="(item, index) in ragEvidenceItems.slice(0, 8)" :key="index">
+                {{ item.source || item.dimension }}：{{ item.content }}
+              </li>
+            </ul>
+          </div>
+
+          <div v-if="applicationFormFieldItems.length" class="trace-block">
+            <h4>申请书字段识别</h4>
+            <div class="field-grid">
+              <div v-for="item in applicationFormFieldItems" :key="item.key" class="field-item">
+                <span class="field-label">{{ formatFieldLabel(item.key) }}</span>
+                <span>{{ item.value }}</span>
+              </div>
+            </div>
+          </div>
+
           <div v-if="attachmentDocuments.length" class="trace-block">
             <h4>附件解析来源</h4>
             <ul>
@@ -117,6 +152,31 @@ const suggestions = computed(() => {
 const aiTrace = computed(() => reviewResult.value?.details?.ai_review_trace || {})
 const fastRules = computed(() => reviewResult.value?.details?.fast_rules || {})
 const documentCache = computed(() => reviewResult.value?.details?.document_cache || {})
+const complianceDimensions = computed(() => {
+  const items = reviewResult.value?.details?.compliance?.dimensions
+  return Array.isArray(items) ? items : []
+})
+const ragEvidenceItems = computed(() => {
+  const evidence = reviewResult.value?.details?.rag_evidence
+  if (!evidence || typeof evidence !== 'object') return []
+  return Object.entries(evidence).flatMap(([dimension, hits]) => {
+    const list = Array.isArray(hits) ? hits : []
+    return list.map(item => ({
+      dimension,
+      source: item?.source,
+      content: item?.content,
+      score: item?.score
+    }))
+  }).filter(item => item.content)
+})
+const applicationFormFieldItems = computed(() => {
+  const fields = reviewResult.value?.details?.application_form_fields
+  if (!fields || typeof fields !== 'object') return []
+  return Object.entries(fields).map(([key, item]) => ({
+    key,
+    value: item && typeof item === 'object' ? item.value : item
+  })).filter(item => item.value)
+})
 const knowledgeHits = computed(() => {
   const items = reviewResult.value?.knowledge_hits
   return Array.isArray(items) ? items : []
@@ -190,9 +250,10 @@ const formatCompliance = (value) => {
     return formatDetailValue(value)
   }
 
-  const passText = value.pass === true || value.status === 'PASS' ? '通过' : value.pass === false || value.status === 'FAIL' ? '不通过' : '未知'
+  const passText = value.status === 'WARNING' ? '有风险，需复核' : value.pass === true || value.status === 'PASS' ? '通过' : value.pass === false || value.status === 'FAIL' ? '不通过' : '未知'
   const violations = Array.isArray(value.violations) && value.violations.length ? value.violations.join('；') : ''
-  return [passText, violations].filter(Boolean).join('；')
+  const warnings = Array.isArray(value.warnings) && value.warnings.length ? `警告：${value.warnings.join('；')}` : ''
+  return [passText, violations, warnings].filter(Boolean).join('；')
 }
 
 const formatReviewMode = (mode) => {
@@ -250,6 +311,47 @@ const formatCacheHit = (hit) => {
   if (hit === true) return '缓存命中'
   if (hit === false) return '本次解析'
   return '未记录缓存'
+}
+
+const formatDimensionStatus = (status) => {
+  const texts = {
+    PASS: '通过',
+    WARNING: '需复核',
+    BLOCKER: '硬性问题',
+    FAIL: '不通过'
+  }
+  return texts[status] || status || '未知'
+}
+
+const getDimensionStatusClass = (status) => {
+  const classes = {
+    PASS: 'dimension-pass',
+    WARNING: 'dimension-warning',
+    BLOCKER: 'dimension-blocker',
+    FAIL: 'dimension-blocker'
+  }
+  return classes[status] || 'dimension-unknown'
+}
+
+const formatFieldLabel = (key) => {
+  const labels = {
+    applicant_name: '申请人',
+    applicant_id: '证件号/信用代码',
+    legal_representative: '法定代表人',
+    project_name: '项目名称',
+    water_source_type: '水源类型',
+    location: '取水地点',
+    intake_location: '取水口位置',
+    annual_water_quantity: '年取水量',
+    operation_annual_quantity: '运行期年取水量',
+    water_use: '取水用途',
+    metering_method: '计量方式',
+    return_water_quantity: '年退水量',
+    drainage_method: '退水方式/排放去向',
+    commitment: '承诺内容',
+    term: '期限'
+  }
+  return labels[key] || key
 }
 
 const isRemovedMaterialMessage = (value) => String(value || '').includes(REMOVED_MATERIAL_NAME)
@@ -401,6 +503,71 @@ watch(() => props.application?.id, (id) => {
 .trace-block h4 {
   margin-bottom: 0.6rem;
   color: #374151;
+}
+
+.dimension-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.dimension-item {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.dimension-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.dimension-status {
+  flex-shrink: 0;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.dimension-pass {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.dimension-warning {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.dimension-blocker {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.dimension-unknown {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.field-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.field-label {
+  color: #6b7280;
+  font-size: 0.85rem;
 }
 
 .status-pending,

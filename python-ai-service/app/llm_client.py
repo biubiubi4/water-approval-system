@@ -28,7 +28,14 @@ class LLMClient:
         if self.enabled and self.api_key:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
 
-    def _build_prompt(self, application: Dict[str, Any], knowledge_hits: List[Dict[str, Any]], documents: List[Any] = None) -> str:
+    def _build_prompt(
+        self,
+        application: Dict[str, Any],
+        knowledge_hits: List[Dict[str, Any]],
+        documents: List[Any] = None,
+        local_compliance: Dict[str, Any] | None = None,
+        rag_evidence: Dict[str, Any] | None = None,
+    ) -> str:
         knowledge_lines = []
         for idx, hit in enumerate(knowledge_hits, start=1):
             content = str(hit.get("content", ""))
@@ -50,7 +57,9 @@ class LLMClient:
             "- status: APPROVED 或 REJECTED\n"
             "- message: 简要结论\n"
             "- suggestions: 字符串数组，如包含多处不合规请作为列表项输出\n"
-            "- details: 对象，至少包含 regulation_basis(数组) 与 reasoning(字符串)\n\n"
+            "- details: 对象，至少包含 regulation_basis(数组)、reasoning(字符串)、compliance(对象)\n"
+            "details.compliance 固定格式：pass、status、dimensions、violations、suggestions。\n"
+            "dimensions 每项固定包含 code、status、reason、legal_basis。\n\n"
             "【重要审查规则】\n"
             "1. 要件缺失重检：附件实际内容（根据下方附件解析文本判断）是否与用户声称为该类的材料（例如身份证、营业执照、申请书等）一致。如果上传了名为'身份证.png'实际是提取出'驾驶证'文本，需判定不合格。\n"
             "2. 信息不一致：用户提交的文字申请数据（如姓名、证件号），必须与附件材料提取文本（身份证、营业执照等）中的信息严格一致相互印证。\n"
@@ -60,6 +69,9 @@ class LLMClient:
             f"申请数据：{json.dumps(application, ensure_ascii=False)}\n"
             f"附件内容解析：{doc_text}\n"
             f"法规片段：{knowledge_text}\n"
+            f"本地维度化合规初判：{json.dumps(local_compliance or {}, ensure_ascii=False)}\n"
+            f"按维度检索的法规依据：{json.dumps(rag_evidence or {}, ensure_ascii=False)}\n"
+            "注意：本地初判中的 BLOCKER 不得被改判为通过；如仅存在 WARNING，请判断是否需要补正或人工复核。\n"
         )
 
     def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:
@@ -89,6 +101,9 @@ class LLMClient:
         details = payload.get("details")
         if not isinstance(details, dict):
             details = {}
+        compliance = details.get("compliance")
+        if isinstance(compliance, dict):
+            details["compliance"] = self._normalize_compliance(compliance)
 
         return {
             "status": status,
@@ -97,7 +112,47 @@ class LLMClient:
             "details": details,
         }
 
-    def generate_review(self, application: Dict[str, Any], knowledge_hits: List[Dict[str, Any]], documents: List[Any] = None) -> Optional[Dict[str, Any]]:
+    def _normalize_compliance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        status = str(payload.get("status") or "").upper()
+        if status not in {"PASS", "WARNING", "FAIL"}:
+            status = "FAIL" if payload.get("pass") is False else "PASS"
+
+        dimensions = payload.get("dimensions")
+        if not isinstance(dimensions, list):
+            dimensions = []
+
+        violations = payload.get("violations")
+        if not isinstance(violations, list):
+            violations = []
+
+        suggestions = payload.get("suggestions")
+        if not isinstance(suggestions, list):
+            suggestions = []
+
+        return {
+            "pass": bool(payload.get("pass", status != "FAIL")),
+            "status": status,
+            "dimensions": [
+                {
+                    "code": str(item.get("code", "")) if isinstance(item, dict) else "",
+                    "status": str(item.get("status", "")) if isinstance(item, dict) else "",
+                    "reason": str(item.get("reason", "")) if isinstance(item, dict) else "",
+                    "legal_basis": item.get("legal_basis", []) if isinstance(item, dict) and isinstance(item.get("legal_basis"), list) else [],
+                }
+                for item in dimensions
+            ],
+            "violations": [str(item) for item in violations],
+            "suggestions": [str(item) for item in suggestions],
+        }
+
+    def generate_review(
+        self,
+        application: Dict[str, Any],
+        knowledge_hits: List[Dict[str, Any]],
+        documents: List[Any] = None,
+        local_compliance: Dict[str, Any] | None = None,
+        rag_evidence: Dict[str, Any] | None = None,
+    ) -> Optional[Dict[str, Any]]:
         """Call external AI and return normalized review schema.
 
         Returns None if external AI is disabled or not configured.
@@ -111,7 +166,7 @@ class LLMClient:
             return {"error": "external ai enabled but missing api key (set EXTERNAL_AI_API_KEY or DASHSCOPE_API_KEY)"}
 
         try:
-            prompt = self._build_prompt(application, knowledge_hits, documents)
+            prompt = self._build_prompt(application, knowledge_hits, documents, local_compliance, rag_evidence)
             print(
                 "[AI审核] 调用外部AI文本审查: "
                 f"provider={self.provider}, model={self.model}, "

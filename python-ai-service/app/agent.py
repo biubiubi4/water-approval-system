@@ -14,6 +14,14 @@ from app.vector_store import vector_store
 from app.config import settings
 from app.llm_client import llm_client
 from app.review_rules import RULE_VERSION, build_completeness_from_rules, evaluate_application_rules
+from app.application_form_parser import parse_application_form_fields
+from app.compliance_rules import (
+    COMPLIANCE_RULE_VERSION,
+    build_dimension_queries,
+    evaluate_compliance_dimensions,
+    has_restrictive_evidence,
+    summarize_rag_evidence,
+)
 
 
 SYSTEM_PROMPT = """你是一个专业的涉水审批智能审核助手。请按照以下步骤进行审核：
@@ -105,6 +113,7 @@ class WaterApprovalAgent:
                     "fallback_reason": "",
                     "qwen_decision_reason": "",
                     "rule_version": RULE_VERSION,
+                    "compliance_rule_version": COMPLIANCE_RULE_VERSION,
                 }
             },
             "suggestions": [],
@@ -173,23 +182,50 @@ class WaterApprovalAgent:
         except Exception as e:
             print(f"知识库搜索失败: {e}")
 
+        application_form_fields = parse_application_form_fields(loaded_documents)
+        result["details"]["application_form_fields"] = application_form_fields
+        rag_evidence = self._search_rag_evidence_by_dimension(application_data, application_form_fields)
+        result["details"]["rag_evidence"] = summarize_rag_evidence(rag_evidence)
+
+        local_compliance_result = self._check_compliance(
+            application_data,
+            result["knowledge_hits"],
+            application_form_fields,
+            rag_evidence,
+        )
+        result["details"]["compliance"] = local_compliance_result
+        if local_compliance_result.get("violations"):
+            ai_review_trace["fallback_to_local_rules"] = True
+            ai_review_trace["fallback_reason"] = "local_compliance_blocker"
+            print("[合规审查] 命中本地合规硬性问题，跳过 Qwen 审查")
+            self._apply_local_decision(result, local_compliance_result)
+            return result
+
         # 步骤3：合规性判断（优先使用外部AI，如未配置则回退到本地规则）
         should_call_qwen, decision_reason = self._should_call_external_ai(
             review_mode,
             full_rules,
             result["knowledge_hits"],
             loaded_documents,
+            local_compliance_result,
+            rag_evidence,
         )
         ai_review_trace["qwen_decision_reason"] = decision_reason
 
         if should_call_qwen and self.llm and getattr(self.llm, "enabled", False):
-            llm_resp = self.llm.generate_review(application_data, result["knowledge_hits"], loaded_documents)
+            llm_resp = self.llm.generate_review(
+                application_data,
+                result["knowledge_hits"],
+                loaded_documents,
+                local_compliance_result,
+                result["details"]["rag_evidence"],
+            )
             if llm_resp is None:
                 # 没有有效配置，回退到本地实现
                 ai_review_trace["fallback_to_local_rules"] = True
                 ai_review_trace["fallback_reason"] = "external_ai_disabled_or_not_configured"
                 print("[AI审核] 未调用外部AI，使用本地规则审查")
-                compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+                compliance_result = local_compliance_result
                 result["details"]["compliance"] = compliance_result
                 self._apply_local_decision(result, compliance_result)
             elif isinstance(llm_resp, dict) and llm_resp.get("error"):
@@ -198,7 +234,7 @@ class WaterApprovalAgent:
                 ai_review_trace["fallback_reason"] = str(llm_resp.get("error", "external_ai_error"))
                 print(f"[AI审核] 外部AI审查失败，使用本地规则审查: {ai_review_trace['fallback_reason']}")
                 result["details"]["llm_error"] = llm_resp
-                compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+                compliance_result = local_compliance_result
                 result["details"]["compliance"] = compliance_result
                 self._apply_local_decision(result, compliance_result)
             else:
@@ -211,6 +247,8 @@ class WaterApprovalAgent:
                     if key != "details":
                         result[key] = value
                 result["details"]["external_ai"] = external_details
+                if isinstance(external_details.get("compliance"), dict):
+                    result["details"]["external_ai"]["compliance"] = external_details["compliance"]
                 result.setdefault("knowledge_hits", result.get("knowledge_hits", []))
                 print(f"[AI审核] 使用外部AI审查结果: status={result.get('status')}")
                 # 如果外部结果没有 status 等字段，不改变本地默认逻辑
@@ -218,15 +256,14 @@ class WaterApprovalAgent:
                     ai_review_trace["fallback_to_local_rules"] = True
                     ai_review_trace["fallback_reason"] = "external_ai_response_missing_status"
                     print("[AI审核] 外部AI结果缺少 status，使用本地规则审查")
-                    compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
+                    compliance_result = local_compliance_result
                     result["details"]["compliance"] = compliance_result
                     self._apply_local_decision(result, compliance_result)
         else:
             ai_review_trace["fallback_to_local_rules"] = True
             ai_review_trace["fallback_reason"] = decision_reason
             print(f"[AI审核] 未调用外部AI，使用本地规则审查: {decision_reason}")
-            compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
-            compliance_result["status"] = "PASS" if compliance_result.get("pass") else "FAIL"
+            compliance_result = local_compliance_result
             result["details"]["compliance"] = compliance_result
 
         # 检查外部LLM是否已经设置了status，如果已设置则尊重其判断，不覆盖
@@ -234,7 +271,8 @@ class WaterApprovalAgent:
         
         if not llm_status_set:
             completeness_failed = not bool(result["details"].get("completeness", {}).get("complete", True))
-            compliance_failed = not bool(result["details"].get("compliance", {}).get("pass", True))
+            compliance = result["details"].get("compliance", {})
+            compliance_failed = bool(compliance.get("violations")) or compliance.get("status") == "FAIL"
 
             if completeness_failed or compliance_failed:
                 result["status"] = "REJECTED"
@@ -268,7 +306,9 @@ class WaterApprovalAgent:
         result["details"]["compliance"] = {
             "pass": False,
             "status": "FAIL",
+            "dimensions": [],
             "violations": suggestions,
+            "warnings": [],
         }
         return result
 
@@ -278,6 +318,8 @@ class WaterApprovalAgent:
         rule_result: Dict[str, Any],
         knowledge_hits: List[Dict[str, Any]],
         documents: List[Any],
+        compliance_result: Dict[str, Any] | None = None,
+        rag_evidence: Dict[str, Any] | None = None,
     ) -> tuple[bool, str]:
         if review_mode == "fast":
             return False, "review_mode_fast"
@@ -291,8 +333,15 @@ class WaterApprovalAgent:
         if rule_result.get("should_use_external_ai"):
             return True, "fast_rule_warning_requires_review"
 
+        warning_count = len((compliance_result or {}).get("warnings") or [])
+        if warning_count >= 2:
+            return True, "multiple_compliance_warnings"
+
         if self._has_restrictive_knowledge(knowledge_hits):
             return True, "restrictive_knowledge_hit"
+
+        if has_restrictive_evidence(rag_evidence):
+            return True, "restrictive_rag_evidence_hit"
 
         if self._has_complex_documents(documents):
             return True, "complex_attachment_documents"
@@ -370,6 +419,28 @@ class WaterApprovalAgent:
         
         return " ".join(parts) if parts else "取水许可审批 水法"
 
+    def _search_rag_evidence_by_dimension(
+        self,
+        application: Dict[str, Any],
+        application_form_fields: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        evidence: Dict[str, Any] = {}
+        for dimension, query in build_dimension_queries(application, application_form_fields).items():
+            try:
+                search_result = execute_tool("knowledge_search", {"query": query, "top_k": 2})
+                evidence[dimension] = {
+                    "query": query,
+                    "hits": search_result.get("results", []),
+                }
+            except Exception as error:
+                print(f"维度法规检索失败: dimension={dimension}, error={error}")
+                evidence[dimension] = {
+                    "query": query,
+                    "hits": [],
+                    "error": str(error),
+                }
+        return evidence
+
     def _resolve_application_file_paths(self, application: Dict[str, Any]) -> List[Path]:
         raw_paths = application.get("file_paths") or application.get("file_names") or application.get("attachments") or []
         if not isinstance(raw_paths, list):
@@ -396,28 +467,20 @@ class WaterApprovalAgent:
 
         return resolved_paths
     
-    def _check_compliance(self, application: Dict[str, Any], knowledge_hits: List[Dict]) -> Dict[str, Any]:
+    def _check_compliance(
+        self,
+        application: Dict[str, Any],
+        knowledge_hits: List[Dict],
+        application_form_fields: Dict[str, Any] | None = None,
+        rag_evidence: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """合规性检查"""
-        violations = []
-        
-        required_fields = ["project_name", "applicant_name", "applicant_id"]
-        missing_content = [f for f in required_fields if not application.get(f)]
-        if missing_content:
-            violations.append(f"缺少必填内容：{', '.join(missing_content)}")
-        
-        water_use = application.get("water_use") or ""
-        if "饮用水" in water_use:
-            violations.append("饮用水源保护区禁止新设取水口")
-        
-        for hit in knowledge_hits:
-            if "禁止" in hit.get("content", ""):
-                content = hit.get("content", "")
-                violations.append(f"相关法规限制：{content[:50]}...")
-        
-        return {
-            "violations": violations,
-            "pass": len(violations) == 0,
-        }
+        return evaluate_compliance_dimensions(
+            application,
+            knowledge_hits,
+            application_form_fields,
+            rag_evidence,
+        )
 
     def _apply_local_decision(self, result: Dict[str, Any], compliance_result: Dict[str, Any]) -> None:
         if compliance_result.get("violations"):
