@@ -135,30 +135,59 @@ class WaterApprovalAgent:
             print(f"知识库搜索失败: {e}")
 
         # 步骤3：合规性判断（优先使用外部AI，如未配置则回退到本地规则）
+        ai_review_trace = {
+            "external_ai_enabled": bool(self.llm and getattr(self.llm, "enabled", False)),
+            "provider": getattr(self.llm, "provider", None),
+            "model": getattr(self.llm, "model", None),
+            "used_external_ai": False,
+            "fallback_to_local_rules": False,
+            "fallback_reason": "",
+        }
+        result["details"]["ai_review_trace"] = ai_review_trace
+
         if self.llm and getattr(self.llm, "enabled", False):
             llm_resp = self.llm.generate_review(application_data, result["knowledge_hits"], loaded_documents)
             if llm_resp is None:
                 # 没有有效配置，回退到本地实现
+                ai_review_trace["fallback_to_local_rules"] = True
+                ai_review_trace["fallback_reason"] = "external_ai_disabled_or_not_configured"
+                print("[AI审核] 未调用外部AI，使用本地规则审查")
                 compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
                 result["details"]["compliance"] = compliance_result
                 self._apply_local_decision(result, compliance_result)
             elif isinstance(llm_resp, dict) and llm_resp.get("error"):
                 # 外部AI调用失败 — 记录错误并回退
+                ai_review_trace["fallback_to_local_rules"] = True
+                ai_review_trace["fallback_reason"] = str(llm_resp.get("error", "external_ai_error"))
+                print(f"[AI审核] 外部AI审查失败，使用本地规则审查: {ai_review_trace['fallback_reason']}")
                 result["details"]["llm_error"] = llm_resp
                 compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
                 result["details"]["compliance"] = compliance_result
                 self._apply_local_decision(result, compliance_result)
             else:
                 # 使用外部AI返回的结果（期望与现有结果结构兼容）
-                # 合并外部结果到返回值（保留本地知识命中以便排查）
-                result.update(llm_resp)
+                # 合并外部结果到返回值，同时保留本地完整性检查、附件解析和检索信息。
+                ai_review_trace["used_external_ai"] = True
+                external_status_present = "status" in llm_resp
+                external_details = llm_resp.get("details") if isinstance(llm_resp.get("details"), dict) else {}
+                for key, value in llm_resp.items():
+                    if key != "details":
+                        result[key] = value
+                result["details"]["external_ai"] = external_details
                 result.setdefault("knowledge_hits", result.get("knowledge_hits", []))
+                print(f"[AI审核] 使用外部AI审查结果: status={result.get('status')}")
                 # 如果外部结果没有 status 等字段，不改变本地默认逻辑
-                if "status" not in result:
+                if not external_status_present:
+                    ai_review_trace["fallback_to_local_rules"] = True
+                    ai_review_trace["fallback_reason"] = "external_ai_response_missing_status"
+                    print("[AI审核] 外部AI结果缺少 status，使用本地规则审查")
                     compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
                     result["details"]["compliance"] = compliance_result
                     self._apply_local_decision(result, compliance_result)
         else:
+            ai_review_trace["fallback_to_local_rules"] = True
+            ai_review_trace["fallback_reason"] = "external_ai_disabled"
+            print("[AI审核] 外部AI未启用，使用本地规则审查")
             compliance_result = self._check_compliance(application_data, result["knowledge_hits"])
             compliance_result["status"] = "PASS" if compliance_result.get("pass") else "FAIL"
             result["details"]["compliance"] = compliance_result

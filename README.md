@@ -8,6 +8,18 @@
 - Java 主后端：[java-backend](java-backend) ，Spring Boot 3.2.5，默认端口 8080
 - Python AI 服务：[python-ai-service](python-ai-service) ，FastAPI + LangChain + Chroma，默认端口 8000
 
+## 调用关系
+
+系统采用清晰的分层调用关系：
+
+```text
+Vue 前端 -> Java 主后端 -> Python AI 服务
+```
+
+- 前端只请求 Java 后端的 `/api/**` 接口，不直接访问 Python AI 服务。
+- Java 后端负责申请管理、文件保存、结果持久化，并统一封装对 Python AI 服务的调用。
+- Python AI 服务只作为内部智能审核能力提供方，负责知识库检索、材料完整性检查、附件解析和合规判断。
+
 ## 功能概览
 
 - 申请管理：创建、查询、编辑、删除和审核申请
@@ -21,6 +33,7 @@
 - [API 文档](API文档.md)
 - [部署说明](部署说明.md)
 - [项目启动指南](项目启动指南.md)
+- [审查加速流程设计](审查加速流程设计.md)
 - [系统设计文档说明书](系统设计文档说明书.md)
 - [需求文档说明书](需求文档说明书.md)
 - [团队分工文档](团队分工文档.md)

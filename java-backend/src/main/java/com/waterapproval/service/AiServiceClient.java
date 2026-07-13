@@ -1,11 +1,16 @@
 package com.waterapproval.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,10 +74,15 @@ public class AiServiceClient {
     }
 
     public Map<String, Object> searchKnowledge(String query, Integer topK) {
-        String url = aiServiceUrl + "/api/knowledge/search?q=" + query + "&top_k=" + (topK != null ? topK : 4);
+        URI uri = UriComponentsBuilder.fromHttpUrl(aiServiceUrl + "/api/knowledge/search")
+                .queryParam("q", query)
+                .queryParam("top_k", topK != null ? topK : 4)
+                .build()
+                .encode()
+                .toUri();
         
         try {
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            ResponseEntity<Map> response = restTemplate.getForEntity(uri, Map.class);
             return response.getBody();
         } catch (Exception e) {
             Map<String, Object> errorResult = new HashMap<>();
@@ -123,7 +133,36 @@ public class AiServiceClient {
         }
 
         try {
-            ResponseEntity<Map> response = restTemplate.getForEntity(builder.toUriString(), Map.class);
+            ResponseEntity<Map> response = restTemplate.getForEntity(builder.build().encode().toUri(), Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    public Map<String, Object> uploadKnowledgeFiles(List<MultipartFile> files) {
+        String url = aiServiceUrl + "/api/knowledge/upload";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+
+        try {
+            if (files != null) {
+                for (MultipartFile file : files) {
+                    if (file == null || file.isEmpty()) {
+                        continue;
+                    }
+                    body.add("files", new NamedByteArrayResource(file.getBytes(), file.getOriginalFilename()));
+                }
+            }
+
+            HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
             return response.getBody();
         } catch (Exception e) {
             Map<String, Object> errorResult = new HashMap<>();
@@ -218,6 +257,42 @@ public class AiServiceClient {
             errorResult.put("success", false);
             errorResult.put("error", e.getMessage());
             return errorResult;
+        }
+    }
+
+    public Map<String, Object> batchDeleteKnowledgeRecords(List<String> recordIds) {
+        String url = aiServiceUrl + "/api/knowledge/records/batch-delete";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("ids", recordIds);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            return response.getBody();
+        } catch (Exception e) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("error", e.getMessage());
+            return errorResult;
+        }
+    }
+
+    private static final class NamedByteArrayResource extends ByteArrayResource {
+        private final String filename;
+
+        private NamedByteArrayResource(byte[] byteArray, String filename) {
+            super(byteArray);
+            this.filename = filename;
+        }
+
+        @Override
+        public String getFilename() {
+            return filename;
         }
     }
 }

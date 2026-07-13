@@ -104,12 +104,20 @@ class LLMClient:
         Returns {"error": ...} when call/parsing fails.
         """
         if not self.enabled:
+            print("[AI审核] 外部AI未启用，跳过 Qwen 文本审查")
             return None
         if not self.client:
+            print("[AI审核] 外部AI已启用，但未配置 API Key，无法调用 Qwen 文本审查")
             return {"error": "external ai enabled but missing api key (set EXTERNAL_AI_API_KEY or DASHSCOPE_API_KEY)"}
 
         try:
             prompt = self._build_prompt(application, knowledge_hits, documents)
+            print(
+                "[AI审核] 调用外部AI文本审查: "
+                f"provider={self.provider}, model={self.model}, "
+                f"base_url={self.base_url}, enable_thinking={bool(self.enable_thinking)}, "
+                f"knowledge_hits={len(knowledge_hits)}, documents={len(documents or [])}"
+            )
             completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
@@ -124,13 +132,16 @@ class LLMClient:
 
             parsed = self._extract_json(text)
             if not parsed:
+                print("[AI审核] Qwen 文本审查已返回，但响应不是合法 JSON，将回退本地规则")
                 return {
                     "error": "external ai response is not valid JSON",
                     "raw": text,
                 }
 
+            print("[AI审核] Qwen 文本审查调用成功")
             return self._normalize_result(parsed)
         except Exception as e:
+            print(f"[AI审核] Qwen 文本审查调用失败，将回退本地规则: {e}")
             return {"error": str(e)}
 
 
