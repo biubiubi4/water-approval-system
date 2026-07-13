@@ -1,12 +1,17 @@
 <template>
   <div class="app-container">
     <header class="header">
-      <h1>涉水审批智能审核系统</h1>
-      <nav class="nav">
-        <button @click="currentPage = 'list'" :class="{ active: currentPage === 'list' }">申请列表</button>
-        <button @click="newApplication" :class="{ active: currentPage === 'create' }">新建申请</button>
-        <button @click="currentPage = 'knowledge'" :class="{ active: currentPage === 'knowledge' }">知识库管理</button>
-      </nav>
+      <div class="header-inner">
+        <div>
+          <h1>涉水审批智能审核系统</h1>
+          <p>取水许可材料预审、法规检索与 AI 复核工作台</p>
+        </div>
+        <nav class="nav">
+          <button @click="currentPage = 'list'" :class="{ active: currentPage === 'list' }">申请列表</button>
+          <button @click="newApplication" :class="{ active: currentPage === 'create' }">新建申请</button>
+          <button @click="currentPage = 'knowledge'" :class="{ active: currentPage === 'knowledge' }">知识库管理</button>
+        </nav>
+      </div>
     </header>
 
     <main class="main-content">
@@ -71,36 +76,54 @@ body,
 
 body {
   font-family: Arial, Helvetica, sans-serif;
-  background: #f6f7f9;
+  background: #eef2f7;
   color: #1f2937;
 }
 
 .app-container {
   min-height: 100vh;
-  background: #f6f7f9;
+  background:
+    linear-gradient(180deg, #eaf2ff 0, rgba(234, 242, 255, 0) 280px),
+    #f5f7fb;
 }
 
 .header {
   background: #ffffff;
   color: #111827;
-  padding: 1rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.header-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
 }
 
 .header h1 {
-  font-size: 1.35rem;
-  margin-bottom: 0.75rem;
-  font-weight: 600;
+  font-size: 1.4rem;
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.header p {
+  color: #64748b;
+  font-size: 0.92rem;
 }
 
 .nav {
   display: flex;
-  gap: 1rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
 .nav button {
-  padding: 0.45rem 0.85rem;
+  padding: 0.58rem 0.9rem;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background: #ffffff;
@@ -111,11 +134,21 @@ body {
 
 .nav button:hover,
 .nav button.active {
-  background: #f3f4f6;
-  border-color: #9ca3af;
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
 }
 
 .main-content {
-  padding: 1.25rem;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+@media (max-width: 760px) {
+  .header-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

@@ -110,18 +110,16 @@ public class ApplicationService {
         application.setApplicationDate(LocalDateTime.now());
 
         if (files != null && !files.isEmpty()) {
-            // 删除旧文件
-            List<String> oldFiles = new ArrayList<>(application.getFiles());
-            deleteStoredFiles(oldFiles);
-            try {
-                aiServiceClient.deleteKnowledge(oldFiles);
-            } catch (Exception ex) {
-                System.err.println("通知AI服务删除知识失败: " + ex.getMessage());
-            }
             List<String> originalFileNames = extractOriginalFileNames(files);
             List<String> saved = saveFiles(files);
-            application.setFiles(saved);
-            application.setAttachments(originalFileNames.isEmpty() ? new ArrayList<>(saved) : originalFileNames);
+
+            List<String> mergedFiles = new ArrayList<>(application.getFiles() == null ? List.of() : application.getFiles());
+            mergedFiles.addAll(saved);
+            application.setFiles(mergedFiles);
+
+            List<String> mergedAttachments = new ArrayList<>(application.getAttachments() == null ? List.of() : application.getAttachments());
+            mergedAttachments.addAll(originalFileNames.isEmpty() ? saved : originalFileNames);
+            application.setAttachments(mergedAttachments);
         }
 
         application = repository.save(application);

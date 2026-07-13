@@ -61,6 +61,7 @@ lerna-debug.log*
 # Uploads
 uploads/
 chroma/
+python-ai-service/data/document_cache/
 *.pdf
 *.doc
 *.docx

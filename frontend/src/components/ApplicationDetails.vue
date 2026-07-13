@@ -96,6 +96,7 @@ const props = defineProps({
 
 const currentApplication = ref(null)
 const reviewResult = ref(null)
+const REMOVED_MATERIAL_NAME = '水资源论证相关材料'
 
 const displayAttachments = computed(() => {
   const attachments = currentApplication.value?.attachments || props.application?.attachments
@@ -108,9 +109,9 @@ const displayAttachments = computed(() => {
 })
 
 const suggestions = computed(() => {
-  if (Array.isArray(reviewResult.value?.suggestions)) return reviewResult.value.suggestions
+  if (Array.isArray(reviewResult.value?.suggestions)) return filterRemovedMaterialItems(reviewResult.value.suggestions)
   const items = reviewResult.value?.details?.suggestions
-  return Array.isArray(items) ? items : []
+  return filterRemovedMaterialItems(items)
 })
 
 const aiTrace = computed(() => reviewResult.value?.details?.ai_review_trace || {})
@@ -126,7 +127,17 @@ const attachmentDocuments = computed(() => {
 })
 const ruleIssues = computed(() => {
   const items = fastRules.value?.issues
-  return Array.isArray(items) ? items : []
+  if (!Array.isArray(items)) return []
+
+  const seen = new Set()
+  return items.filter((item) => {
+    const message = String(item?.message || '')
+    if (isRemovedMaterialMessage(message)) return false
+    const key = `${item?.code || ''}:${message}:${item?.source || ''}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 })
 
 const getStatusClass = (status) => {
@@ -163,10 +174,14 @@ const formatCompleteness = (value) => {
     return formatDetailValue(value)
   }
 
-  const completeText = value.complete === true || value.status === 'PASS' ? '完整' : value.complete === false || value.status === 'FAIL' ? '不完整' : '未知'
-  const missingItems = Array.isArray(value.missing_items) && value.missing_items.length ? `缺少材料：${value.missing_items.join('、')}` : ''
-  const missingFields = Array.isArray(value.missing_fields) && value.missing_fields.length ? `缺少字段：${value.missing_fields.join('、')}` : ''
-  const issues = Array.isArray(value.issues) && value.issues.length ? value.issues.join('；') : ''
+  const missingItemList = filterRemovedMaterialItems(value.missing_items)
+  const issueList = filterRemovedMaterialItems(value.issues)
+  const missingFieldList = Array.isArray(value.missing_fields) ? value.missing_fields : []
+  const hasVisibleProblems = missingItemList.length > 0 || issueList.length > 0 || missingFieldList.length > 0
+  const completeText = value.complete === true || value.status === 'PASS' || !hasVisibleProblems ? '完整' : value.complete === false || value.status === 'FAIL' ? '不完整' : '未知'
+  const missingItems = missingItemList.length ? `缺少材料：${missingItemList.join('、')}` : ''
+  const missingFields = missingFieldList.length ? `缺少字段：${missingFieldList.join('、')}` : ''
+  const issues = issueList.length ? issueList.join('；') : ''
   return [completeText, missingItems, missingFields, issues].filter(Boolean).join('；')
 }
 
@@ -235,6 +250,13 @@ const formatCacheHit = (hit) => {
   if (hit === true) return '缓存命中'
   if (hit === false) return '本次解析'
   return '未记录缓存'
+}
+
+const isRemovedMaterialMessage = (value) => String(value || '').includes(REMOVED_MATERIAL_NAME)
+
+const filterRemovedMaterialItems = (items) => {
+  if (!Array.isArray(items)) return []
+  return items.filter(item => !isRemovedMaterialMessage(item))
 }
 
 const maskId = (id) => {

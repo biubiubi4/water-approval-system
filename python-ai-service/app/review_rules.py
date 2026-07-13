@@ -216,10 +216,14 @@ def _check_application_form_rules(
 
 
 def _check_attachment_type_consistency(document_items: List[Dict[str, str]], issues: List[Dict[str, Any]]) -> None:
+    grouped_items: Dict[str, List[str]] = {}
     for item in document_items:
-        source = item["source"]
+        grouped_items.setdefault(item["source"], []).append(item["text"])
+
+    for source, texts in grouped_items.items():
         source_text = normalize_text(source)
-        content = normalize_text(item["text"])
+        content = normalize_text("\n".join(texts))
+        compact_content = compact_text(content)
 
         if "身份证" in source_text and "驾驶证" in content and "身份证" not in content:
             _add_issue(
@@ -230,7 +234,9 @@ def _check_attachment_type_consistency(document_items: List[Dict[str, str]], iss
                 source=source,
             )
 
-        if "营业执照" in source_text and not any(key in content for key in ["营业执照", "统一社会信用代码", "营业期限"]):
+        if "营业执照" in source_text and not any(
+            compact_text(key) in compact_content for key in ["营业执照", "统一社会信用代码", "营业期限"]
+        ):
             _add_issue(
                 issues,
                 code="business_license_content_mismatch",
@@ -240,7 +246,8 @@ def _check_attachment_type_consistency(document_items: List[Dict[str, str]], iss
             )
 
         if any(key in source_text for key in ["申请书", "申请表"]) and not any(
-            key in content for key in ["取水许可", "取水申请", "申请人", "申请单位", "申请人基本情况", "项目基本情况"]
+            compact_text(key) in compact_content
+            for key in ["取水许可", "取水申请", "申请人", "申请单位", "申请人基本情况", "项目基本情况"]
         ):
             _add_issue(
                 issues,

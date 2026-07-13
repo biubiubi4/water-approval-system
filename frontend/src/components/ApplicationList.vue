@@ -1,40 +1,54 @@
 <template>
   <div class="application-list">
-    <h2>申请列表</h2>
-    <div class="search-bar">
-      <input type="text" v-model="searchQuery" placeholder="搜索申请人姓名..." />
+    <div class="list-header">
+      <div>
+        <h2>申请列表</h2>
+        <p>共 {{ applications.length }} 条申请，支持按申请人或项目名称检索。</p>
+      </div>
+      <div class="search-bar">
+        <input type="text" v-model="searchQuery" placeholder="搜索申请人或项目名称" />
+      </div>
     </div>
-    <table class="table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>申请人姓名</th>
-          <th>项目名称</th>
-          <th>证件号码</th>
-          <th>申请日期</th>
-          <th>状态</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="app in filteredApplications" :key="app.id">
-          <td>{{ app.id }}</td>
-          <td>{{ app.applicantName }}</td>
-          <td>{{ app.projectName || '-' }}</td>
-          <td>{{ maskId(app.applicantId) }}</td>
-          <td>{{ formatDate(app.applicationDate) }}</td>
-          <td>
-            <span :class="getStatusClass(app.status)">{{ getStatusText(app) }}</span>
-          </td>
-          <td>
-            <button @click="$emit('select-application', app)" class="btn-view">查看详情</button>
-            <button @click="$emit('edit-application', app)" class="btn-edit">编辑</button>
-            <button @click="$emit('review-application', app)" class="btn-review">审查/结果</button>
-            <button @click="deleteApplication(app.id)" class="btn-delete">删除</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>申请人</th>
+            <th>项目名称</th>
+            <th>取水用途</th>
+            <th>申请日期</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="app in filteredApplications" :key="app.id">
+            <td class="mono">#{{ app.id }}</td>
+            <td>
+              <strong>{{ app.applicantName }}</strong>
+              <span class="subtext">{{ maskId(app.applicantId) }}</span>
+            </td>
+            <td>{{ app.projectName || '-' }}</td>
+            <td>{{ app.waterUse || '-' }}</td>
+            <td>{{ formatDate(app.applicationDate) }}</td>
+            <td>
+              <span :class="getStatusClass(app.status)" class="status-badge">{{ getStatusText(app) }}</span>
+            </td>
+            <td>
+              <div class="actions">
+                <button @click="$emit('select-application', app)" class="btn-view">详情</button>
+                <button @click="$emit('edit-application', app)" class="btn-edit">编辑</button>
+                <button @click="$emit('review-application', app)" class="btn-review">审查</button>
+                <button @click="deleteApplication(app.id)" class="btn-delete">删除</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div v-if="applications.length === 0" class="empty-state">
       <p>暂无申请记录</p>
     </div>
@@ -151,27 +165,47 @@ onMounted(fetchApplications)
 .application-list {
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 1.25rem;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .application-list h2 {
-  margin-bottom: 1rem;
   color: #111827;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+}
+
+.application-list p {
+  color: #64748b;
+  font-size: 0.9rem;
 }
 
 .search-bar {
-  margin-bottom: 1rem;
+  width: min(360px, 100%);
 }
 
 .search-bar input {
   width: 100%;
   padding: 0.65rem 0.75rem;
   border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 1rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
   background: #ffffff;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
 }
 
 .table {
@@ -181,56 +215,115 @@ onMounted(fetchApplications)
 
 .table th,
 .table td {
-  padding: 0.75rem;
+  padding: 0.85rem;
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
+  vertical-align: middle;
 }
 
 .table th {
-  background-color: #f9fafb;
+  background-color: #f8fafc;
   font-weight: 600;
   color: #374151;
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mono {
+  color: #64748b;
+  font-family: Consolas, monospace;
+}
+
+.subtext {
+  display: block;
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
 }
 
 .status-pending,
 .status-approved,
 .status-rejected,
 .status-error {
-  background-color: #f3f4f6;
-  color: #4b5563;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
   font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.status-pending {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+.status-approved {
+  background-color: #ecfdf5;
+  color: #047857;
+}
+
+.status-rejected {
+  background-color: #fff7ed;
+  color: #c2410c;
+}
+
+.status-error {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .btn-view,
 .btn-edit,
 .btn-review,
 .btn-delete {
-  padding: 0.4rem 0.75rem;
+  padding: 0.42rem 0.7rem;
   border: 1px solid #d1d5db;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   background: #ffffff;
   color: #374151;
-}
-
-.btn-edit,
-.btn-review,
-.btn-delete {
-  margin-left: 0.5rem;
 }
 
 .btn-view:hover,
 .btn-edit:hover,
 .btn-review:hover,
 .btn-delete:hover {
-  background: #f9fafb;
+  background: #f8fafc;
+}
+
+.btn-review {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.btn-delete {
+  border-color: #fecaca;
+  color: #b91c1c;
+  background: #fff5f5;
 }
 
 .empty-state {
   text-align: center;
   padding: 2rem;
   color: #9ca3af;
+}
+
+@media (max-width: 760px) {
+  .list-header {
+    flex-direction: column;
+  }
 }
 </style>
