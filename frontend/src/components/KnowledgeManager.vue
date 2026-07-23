@@ -1628,4 +1628,89 @@ onMounted(reloadAll)
     font-size: 1.6rem;
   }
 }
+
+.knowledge-manager {
+  color: #172033;
+}
+
+.hero,
+.upload-panel,
+.parse-result-panel,
+.summary-card,
+.chart-panel,
+.toolbar,
+.semantic-search-panel,
+.batch-toolbar,
+.table-panel,
+.detail-panel,
+.modal-card {
+  border-radius: 8px;
+  border-color: #d9e6eb;
+  box-shadow: 0 18px 48px rgba(14, 47, 58, 0.08);
+}
+
+.hero {
+  background:
+    linear-gradient(135deg, rgba(7, 55, 70, 0.96), rgba(8, 34, 49, 0.94)),
+    linear-gradient(90deg, #0f766e, #0e8799);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 64px rgba(8, 43, 56, 0.18);
+}
+
+.hero .eyebrow,
+.hero-copy {
+  color: rgba(236, 253, 245, 0.82);
+}
+
+.btn-primary,
+.mini-btn {
+  background: linear-gradient(135deg, #0e8799, #0f766e);
+  color: #ffffff;
+}
+
+.btn-secondary {
+  background: #e9f6f8;
+  color: #0b5261;
+}
+
+.btn-danger,
+.mini-btn.danger {
+  background: #b42318;
+}
+
+.summary-card {
+  background: #ffffff;
+}
+
+.accent-blue {
+  background: linear-gradient(135deg, #eef8ff, #ffffff);
+}
+
+.accent-green {
+  background: linear-gradient(135deg, #ecfdf5, #ffffff);
+}
+
+.accent-amber {
+  background: linear-gradient(135deg, #fff7ed, #ffffff);
+}
+
+.accent-slate {
+  background: linear-gradient(135deg, #f3f7f8, #ffffff);
+}
+
+.drop-zone,
+.toolbar-group input,
+.semantic-search-form textarea,
+.semantic-actions input,
+.modal-form input,
+.modal-form textarea {
+  border-radius: 8px;
+  border-color: #cbdbe0;
+}
+
+.records-table tbody tr:hover,
+.records-table tbody tr.selected {
+  background: #edfafa;
+}
 </style>

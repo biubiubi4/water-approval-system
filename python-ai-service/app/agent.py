@@ -165,7 +165,12 @@ class WaterApprovalAgent:
                 "files": [],
             }
 
-        full_rules = evaluate_application_rules(application_data, loaded_documents)
+        field_validity_checker = self._field_validity_checker if review_mode in {"smart", "strict"} else None
+        full_rules = evaluate_application_rules(
+            application_data,
+            loaded_documents,
+            field_validity_checker=field_validity_checker,
+        )
         result["details"]["fast_rules"] = full_rules
         result["details"]["completeness"] = build_completeness_from_rules(full_rules)
         if full_rules.get("should_block"):
@@ -481,6 +486,11 @@ class WaterApprovalAgent:
             application_form_fields,
             rag_evidence,
         )
+
+    def _field_validity_checker(self, fields: List[Dict[str, Any]], instruction: str) -> Dict[str, Any] | None:
+        if not (self.llm and getattr(self.llm, "enabled", False)):
+            return None
+        return self.llm.validate_field_values(fields, instruction)
 
     def _apply_local_decision(self, result: Dict[str, Any], compliance_result: Dict[str, Any]) -> None:
         if compliance_result.get("violations"):

@@ -6,14 +6,18 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "Water Approval AI Service"
-    chroma_dir: Path = Path(__file__).resolve().parent.parent / "data" / "chroma"
+    # Keep mutable runtime assets outside the source tree. Each value remains
+    # overrideable through its corresponding environment variable.
+    chroma_dir: Path = Path(r"E:\water-approval-runtime\chroma")
+    document_cache_dir: Path = Path(r"E:\water-approval-runtime\document_cache")
+    uploads_dir: Path = Path(r"E:\water-approval-runtime\uploads")
+    model_cache_dir: Path = Path(r"E:\water-approval-runtime\huggingface")
     default_collection: str = "water_approval_knowledge"
     port: int = 8000
 
     # Embedding backend configuration
-    embedding_provider: str = "hash"
+    embedding_provider: str = "sentence_transformers"
     embedding_model_name: str = "BAAI/bge-small-zh-v1.5"
-    embedding_fallback_provider: str = "hash"
 
     # PDF reader configuration
     pdf_reader_provider: str = "auto"
@@ -23,10 +27,12 @@ class Settings(BaseSettings):
     pdf_reader_render_zoom: float = 2.0
 
     # Semantic retrieval tuning
-    semantic_search_candidate_k: int = 12
+    semantic_search_candidate_k: int = 24
     semantic_search_max_variants: int = 4
-    semantic_search_lexical_weight: float = 0.35
-    semantic_search_vector_weight: float = 0.65
+    semantic_search_lexical_weight: float = 0.2
+    semantic_search_bm25_weight: float = 0.2
+    semantic_search_vector_weight: float = 0.6
+    semantic_search_bm25_candidate_k: int = 16
 
     # Review flow mode: fast, smart, or strict.
     # fast: rules + retrieval only; smart: call external AI only for risky cases; strict: always call external AI.
@@ -34,7 +40,6 @@ class Settings(BaseSettings):
 
     # Document parse cache. Keeps extracted text by file SHA256 to avoid repeated OCR/PDF parsing.
     document_cache_enabled: bool = True
-    document_cache_dir: Path = Path(__file__).resolve().parent.parent / "data" / "document_cache"
 
     # External AI integration (optional)
     external_ai_enabled: bool = False

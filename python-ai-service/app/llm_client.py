@@ -71,7 +71,7 @@ class LLMClient:
             f"法规片段：{knowledge_text}\n"
             f"本地维度化合规初判：{json.dumps(local_compliance or {}, ensure_ascii=False)}\n"
             f"按维度检索的法规依据：{json.dumps(rag_evidence or {}, ensure_ascii=False)}\n"
-            "注意：本地初判中的 BLOCKER 不得被改判为通过；如仅存在 WARNING，请判断是否需要补正或人工复核。\n"
+            "注意：本地初判中的 BLOCKER 不得被改判为通过；如仅存在 WARNING，请判断是否需要补正或人工复核，若需要，在返回末输出“补正”、“人工复核”等严格字段\n"
         )
 
     def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:
@@ -144,6 +144,64 @@ class LLMClient:
             "violations": [str(item) for item in violations],
             "suggestions": [str(item) for item in suggestions],
         }
+
+    def validate_field_values(
+        self,
+        fields: List[Dict[str, Any]],
+        instruction: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Judge whether extracted form field values are valid enough for review."""
+        if not fields:
+            return {"fields": []}
+        if not self.enabled:
+            return None
+        if not self.client:
+            return {"error": "external ai enabled but missing api key"}
+
+        prompt = (
+            "你是涉水审批申请表字段完整性审核助手。请严格输出 JSON，不要输出 markdown。\n"
+            "任务：判断每个字段标签后的内容是否为有效、具体、可用于审批的信息。\n"
+            "判定口径：空白、占位词、仅标点、'见附件/详见图纸/同上'、过于笼统无法定位或无法说明用途的内容均为无效。\n"
+            "JSON 格式：{\"fields\":[{\"name\":\"字段名\",\"valid\":true或false,\"confidence\":0到1,\"reason\":\"一句话原因\"}]}\n"
+            f"补充要求：{instruction or '无'}\n"
+            f"字段列表：{json.dumps(fields, ensure_ascii=False)}"
+        )
+
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                extra_body={"enable_thinking": bool(self.enable_thinking)},
+                stream=False,
+            )
+            text = ""
+            if completion and completion.choices:
+                text = completion.choices[0].message.content or ""
+            parsed = self._extract_json(text)
+            if not parsed:
+                return {"error": "field validity response is not valid JSON", "fields": []}
+            results = parsed.get("fields")
+            if not isinstance(results, list):
+                return {"error": "field validity response missing fields", "fields": []}
+            return {
+                "fields": [
+                    {
+                        "name": str(item.get("name", "")) if isinstance(item, dict) else "",
+                        "valid": self._parse_bool(item.get("valid")) if isinstance(item, dict) else False,
+                        "confidence": item.get("confidence") if isinstance(item, dict) else None,
+                        "reason": str(item.get("reason", "")) if isinstance(item, dict) else "",
+                    }
+                    for item in results
+                ]
+            }
+        except Exception as error:
+            return {"error": str(error), "fields": []}
+
+    def _parse_bool(self, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        return text in {"true", "1", "yes", "y", "有效", "是"}
 
     def generate_review(
         self,

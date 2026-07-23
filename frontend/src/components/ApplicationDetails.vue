@@ -1,5 +1,6 @@
 <template>
   <div class="application-details">
+    <p class="section-kicker">Case Detail</p>
     <h2>申请详情</h2>
     <div v-if="application" class="details">
       <section class="section-card">
@@ -418,28 +419,40 @@ watch(() => props.application?.id, (id) => {
 
 <style scoped>
 .application-details {
-  background: #ffffff;
-  padding: 1.25rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  box-shadow: none;
-  max-width: 920px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 1.35rem;
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
+  box-shadow: 0 22px 58px rgba(14, 47, 58, 0.1);
+  max-width: 980px;
   margin: 0 auto;
+  backdrop-filter: blur(12px);
 }
 
 .application-details h2 {
-  color: #111827;
+  color: #102633;
   margin-bottom: 1rem;
-  font-size: 1.15rem;
+  font-size: 1.45rem;
+}
+
+.section-kicker {
+  color: #10879a;
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
 }
 
 .section-card {
-  padding: 1rem 0;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fbfeff, #ffffff);
 }
 
 .section-card:last-child {
-  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .section-card h3 {
@@ -464,8 +477,9 @@ watch(() => props.application?.id, (id) => {
 }
 
 .review-item {
-  background: #f9fafb;
-  border-radius: 6px;
+  background: #f3fbfc;
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
   padding: 0.75rem;
 }
 
@@ -496,8 +510,9 @@ watch(() => props.application?.id, (id) => {
 .trace-block {
   margin: 0.75rem 0 1rem;
   padding: 0.85rem;
-  background: #f9fafb;
-  border-radius: 6px;
+  background: #f7fbfc;
+  border: 1px solid #e2ecef;
+  border-radius: 8px;
 }
 
 .trace-block h4 {
@@ -513,8 +528,8 @@ watch(() => props.application?.id, (id) => {
 
 .dimension-item {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
   padding: 0.75rem;
 }
 
@@ -577,6 +592,6 @@ watch(() => props.application?.id, (id) => {
   background-color: #f3f4f6;
   color: #4b5563;
   padding: 0.2rem 0.45rem;
-  border-radius: 4px;
+  border-radius: 999px;
 }
 </style>

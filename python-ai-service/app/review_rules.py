@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Any, Dict, Iterable, List
+from typing import Any, Callable, Dict, Iterable, List
+
+from app.application_form_parser import extract_field_value_from_text
 
 
 RULE_VERSION = "2026-07-13-standard-application-form-v3"
@@ -34,6 +36,32 @@ REQUIRED_MATERIAL_GROUPS = [
 
 
 PLACEHOLDER_VALUES = {"", "无", "暂无", "待补充", "未填写", "空", "none", "null", "n/a"}
+DOCUMENT_PLACEHOLDER_VALUES = {
+    *PLACEHOLDER_VALUES,
+    "-",
+    "--",
+    "/",
+    "\\",
+    "—",
+    "——",
+    "见附件",
+    "详见附件",
+    "见附表",
+    "详见附表",
+    "见图纸",
+    "详见图纸",
+    "同上",
+    "略",
+    "未知",
+    "不详",
+}
+GENERIC_DOCUMENT_VALUES = {
+    "project_name": {"项目", "本项目", "取水项目", "申请项目"},
+    "water_use": {"用水", "取水", "生产", "生活", "生产生活", "其他用水"},
+    "location": {"本市", "本县", "本区", "本镇", "项目所在地", "厂区", "场区"},
+}
+
+FieldValidityChecker = Callable[[List[Dict[str, Any]], str], Dict[str, Any] | None]
 
 
 def normalize_text(value: Any) -> str:
@@ -100,6 +128,7 @@ def evaluate_application_rules(
     documents: List[Any] | None = None,
     materials: List[str] | None = None,
     check_fields: bool = True,
+    field_validity_checker: FieldValidityChecker | None = None,
 ) -> Dict[str, Any]:
     app = application if isinstance(application, dict) else {}
     material_names = collect_material_names(app, materials)
@@ -109,7 +138,7 @@ def evaluate_application_rules(
     issues: List[Dict[str, Any]] = []
 
     if check_fields:
-        _check_required_fields(app, issues, document_text)
+        _check_required_fields(app, issues, document_text, field_validity_checker=field_validity_checker)
     _check_required_materials(material_names, issues, document_text, has_document_items=bool(document_items))
     _check_application_form_rules(app, issues, document_text)
 
@@ -188,27 +217,166 @@ def _matched_required_materials(submitted_materials: List[str], required_materia
     return matched
 
 
-def _check_required_fields(application: Dict[str, Any], issues: List[Dict[str, Any]], document_text: str = "") -> None:
+def _check_required_fields(
+    application: Dict[str, Any],
+    issues: List[Dict[str, Any]],
+    document_text: str = "",
+    field_validity_checker: FieldValidityChecker | None = None,
+) -> None:
+    pending_ai_checks: List[Dict[str, Any]] = []
+
     for field in REQUIRED_FIELDS:
         value = normalize_text(application.get(field["name"]))
-        if value in PLACEHOLDER_VALUES and not _document_has_field(field, document_text):
+        document_field = _document_field_status(field, document_text)
+        if document_field.get("needs_ai"):
+            pending_ai_checks.append(document_field)
+            document_has_value = True
+        else:
+            document_has_value = bool(document_field.get("valid"))
+
+        if value in PLACEHOLDER_VALUES and not document_has_value:
             severity = "BLOCKER"
             if not document_text and field["name"] in {"project_name", "water_use", "location"}:
                 severity = "WARNING"
+            message = f"缺少必填字段：{field['label']}"
+            if document_field.get("value"):
+                message = f"{message}；附件中识别值疑似无效：{document_field['value']}"
             _add_issue(
                 issues,
                 code=f"missing_field_{field['name']}",
                 severity=severity,
-                message=f"缺少必填字段：{field['label']}",
+                message=message,
                 field=field["name"],
+                document_value=document_field.get("value"),
+                reason=document_field.get("reason"),
             )
 
+    _apply_ai_field_validity(application, issues, pending_ai_checks, field_validity_checker)
 
-def _document_has_field(field: Dict[str, Any], document_text: str) -> bool:
+
+def _document_field_status(field: Dict[str, Any], document_text: str) -> Dict[str, Any]:
     text = compact_text(document_text)
     if not text:
-        return False
-    return any(compact_text(label) in text for label in field.get("document_labels", []))
+        return {"field": field, "valid": False, "reason": "document_text_empty", "value": ""}
+
+    label_found = any(compact_text(label) in text for label in field.get("document_labels", []))
+    if not label_found:
+        return {"field": field, "valid": False, "reason": "label_not_found", "value": ""}
+
+    value = extract_field_value_from_text(document_text, field.get("document_labels", []))
+    local_status = _classify_document_field_value(field["name"], value)
+    return {
+        "field": field,
+        "valid": local_status["status"] == "valid",
+        "needs_ai": local_status["status"] == "uncertain",
+        "reason": local_status["reason"],
+        "value": value,
+        "context": _field_context(document_text, field.get("document_labels", [])),
+    }
+
+
+def _classify_document_field_value(field_name: str, value: str) -> Dict[str, str]:
+    compact_value = compact_text(value)
+    if compact_value in DOCUMENT_PLACEHOLDER_VALUES:
+        return {"status": "invalid", "reason": "empty_or_placeholder"}
+    if _is_known_document_label(compact_value):
+        return {"status": "invalid", "reason": "value_looks_like_another_label"}
+    if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", compact_value):
+        return {"status": "invalid", "reason": "punctuation_only"}
+    if len(compact_value) < 2:
+        return {"status": "invalid", "reason": "too_short"}
+    if compact_value in {compact_text(item) for item in GENERIC_DOCUMENT_VALUES.get(field_name, set())}:
+        return {"status": "uncertain", "reason": "generic_value_needs_ai"}
+    if field_name == "location" and len(compact_value) < 4:
+        return {"status": "uncertain", "reason": "location_too_broad_needs_ai"}
+    if field_name == "project_name" and len(compact_value) < 4:
+        return {"status": "uncertain", "reason": "project_name_too_short_needs_ai"}
+    return {"status": "valid", "reason": "local_rule_valid"}
+
+
+def _is_known_document_label(compact_value: str) -> bool:
+    return any(
+        compact_value == compact_text(label)
+        for field in REQUIRED_FIELDS
+        for label in field.get("document_labels", [])
+    )
+
+
+def _field_context(document_text: str, labels: List[str]) -> str:
+    for label in labels:
+        match = re.search(re.escape(label), document_text)
+        if match:
+            start = max(0, match.start() - 80)
+            end = min(len(document_text), match.end() + 160)
+            return document_text[start:end]
+    return ""
+
+
+def _apply_ai_field_validity(
+    application: Dict[str, Any],
+    issues: List[Dict[str, Any]],
+    pending_checks: List[Dict[str, Any]],
+    field_validity_checker: FieldValidityChecker | None,
+) -> None:
+    if not pending_checks:
+        return
+    if not field_validity_checker:
+        for item in pending_checks:
+            field = item["field"]
+            if normalize_text(application.get(field["name"])) not in PLACEHOLDER_VALUES:
+                continue
+            _add_issue(
+                issues,
+                code=f"uncertain_field_{field['name']}",
+                severity="WARNING",
+                message=f"附件中“{field['label']}”的填写内容疑似过于笼统，建议人工复核：{item.get('value')}",
+                field=field["name"],
+                document_value=item.get("value"),
+                reason=item.get("reason"),
+            )
+        return
+
+    try:
+        ai_result = field_validity_checker(
+            [
+                {
+                    "name": item["field"]["name"],
+                    "label": item["field"]["label"],
+                    "value": item.get("value", ""),
+                    "context": item.get("context", ""),
+                    "reason": item.get("reason"),
+                }
+                for item in pending_checks
+            ],
+            "请判断申请表关键字段标签后的内容是否为有效、具体、可用于审批的信息。",
+        ) or {}
+    except Exception as error:
+        ai_result = {"error": str(error), "fields": []}
+
+    decisions = {
+        str(item.get("name")): item
+        for item in ai_result.get("fields", [])
+        if isinstance(item, dict)
+    }
+    for item in pending_checks:
+        field = item["field"]
+        if normalize_text(application.get(field["name"])) not in PLACEHOLDER_VALUES:
+            continue
+        decision = decisions.get(field["name"])
+        if isinstance(decision, dict) and decision.get("valid") is True:
+            continue
+
+        severity = "BLOCKER" if isinstance(decision, dict) and decision.get("valid") is False else "WARNING"
+        reason = str(decision.get("reason") if isinstance(decision, dict) else ai_result.get("error") or item.get("reason"))
+        _add_issue(
+            issues,
+            code=f"invalid_document_field_{field['name']}" if severity == "BLOCKER" else f"uncertain_field_{field['name']}",
+            severity=severity,
+            message=f"附件中“{field['label']}”的填写内容无效或需复核：{item.get('value')}；原因：{reason}",
+            field=field["name"],
+            document_value=item.get("value"),
+            reason=reason,
+        )
 
 
 def _check_required_materials(

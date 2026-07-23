@@ -2,37 +2,50 @@
   <div class="create-application">
     <div class="page-heading">
       <div>
+        <p class="section-kicker">Intake Workbench</p>
         <h2>{{ isEdit ? '编辑申请' : '新建申请' }}</h2>
         <p>按标准申请书填写基础信息，可一次上传申请书、身份证明、营业执照、论证报告等多个附件。</p>
       </div>
     </div>
 
-    <form @submit.prevent="submitApplication" class="form">
-      <section class="form-section">
-        <h3>申请基础信息</h3>
-        <div class="form-grid">
-          <div class="form-group">
-            <label for="applicantName">申请人或申请单位</label>
-            <input type="text" id="applicantName" v-model="form.applicantName" required placeholder="例如：惠州市安捷诚表面处理材料有限公司" />
+    <div class="form-layout">
+      <aside class="intake-aside">
+        <span>01</span>
+        <h3>材料受理</h3>
+        <p>先沉淀申请主体、项目、取水用途和位置，再上传附件进入自动预审链路。</p>
+        <ul>
+          <li>结构化基础信息</li>
+          <li>多附件一次提交</li>
+          <li>编辑时追加新材料</li>
+        </ul>
+      </aside>
+
+      <form @submit.prevent="submitApplication" class="form">
+        <section class="form-section">
+          <h3>申请基础信息</h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="applicantName">申请人或申请单位</label>
+              <input type="text" id="applicantName" v-model="form.applicantName" required placeholder="例如：惠州市安捷诚表面处理材料有限公司" />
+            </div>
+            <div class="form-group">
+              <label for="applicantId">统一社会信用代码或身份证号码</label>
+              <input type="text" id="applicantId" v-model="form.applicantId" required placeholder="请输入统一社会信用代码或身份证号码" />
+            </div>
+            <div class="form-group">
+              <label for="projectName">项目名称</label>
+              <input type="text" id="projectName" v-model="form.projectName" required placeholder="例如：环保材料生产项目" />
+            </div>
+            <div class="form-group">
+              <label for="waterUse">取水用途</label>
+              <input type="text" id="waterUse" v-model="form.waterUse" required placeholder="例如：工业用水、生活用水、农业用水" />
+            </div>
+            <div class="form-group wide">
+              <label for="location">取水地点</label>
+              <input type="text" id="location" v-model="form.location" required placeholder="填写至村/社区或取水口所在位置" />
+            </div>
           </div>
-          <div class="form-group">
-            <label for="applicantId">统一社会信用代码或身份证号码</label>
-            <input type="text" id="applicantId" v-model="form.applicantId" required placeholder="请输入统一社会信用代码或身份证号码" />
-          </div>
-          <div class="form-group">
-            <label for="projectName">项目名称</label>
-            <input type="text" id="projectName" v-model="form.projectName" required placeholder="例如：环保材料生产项目" />
-          </div>
-          <div class="form-group">
-            <label for="waterUse">取水用途</label>
-            <input type="text" id="waterUse" v-model="form.waterUse" required placeholder="例如：工业用水、生活用水、农业用水" />
-          </div>
-          <div class="form-group wide">
-            <label for="location">取水地点</label>
-            <input type="text" id="location" v-model="form.location" required placeholder="填写至村/社区或取水口所在位置" />
-          </div>
-        </div>
-      </section>
+        </section>
 
       <section class="form-section">
         <div class="section-title-row">
@@ -88,7 +101,8 @@
         </button>
         <button v-if="isEdit" type="button" @click="cancelEdit" class="btn-cancel">取消</button>
       </div>
-    </form>
+      </form>
+    </div>
 
     <div v-if="message" :class="messageClass" class="message">
       {{ message }}
@@ -257,7 +271,7 @@ const submitApplication = async () => {
 
 <style scoped>
 .create-application {
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
@@ -270,14 +284,84 @@ const submitApplication = async () => {
 }
 
 .page-heading h2 {
-  color: #111827;
-  font-size: 1.35rem;
+  color: #102633;
+  font-size: 1.5rem;
   margin-bottom: 0.35rem;
 }
 
 .page-heading p {
   color: #6b7280;
   line-height: 1.6;
+}
+
+.section-kicker {
+  color: #10879a;
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.form-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.intake-aside {
+  position: sticky;
+  top: 92px;
+  min-height: 360px;
+  padding: 1.25rem;
+  border-radius: 8px;
+  color: #ffffff;
+  background:
+    linear-gradient(160deg, rgba(9, 68, 86, 0.96), rgba(9, 37, 53, 0.96)),
+    linear-gradient(135deg, #164e63, #0f766e);
+  box-shadow: 0 22px 54px rgba(8, 43, 56, 0.2);
+  overflow: hidden;
+}
+
+.intake-aside::after {
+  content: "";
+  position: absolute;
+  inset: auto -24px -36px auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(94, 234, 212, 0.16);
+}
+
+.intake-aside span {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 800;
+}
+
+.intake-aside h3 {
+  margin-top: 1rem;
+  font-size: 1.4rem;
+}
+
+.intake-aside p {
+  margin-top: 0.6rem;
+  color: rgba(236, 253, 245, 0.8);
+  line-height: 1.7;
+}
+
+.intake-aside ul {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.2rem;
+  padding-left: 1.1rem;
+  color: rgba(240, 253, 250, 0.9);
+  line-height: 1.9;
 }
 
 .form {
@@ -287,10 +371,11 @@ const submitApplication = async () => {
 }
 
 .form-section {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d9e6eb;
   border-radius: 8px;
   padding: 1.25rem;
+  box-shadow: 0 18px 48px rgba(14, 47, 58, 0.08);
 }
 
 .form-section h3 {
@@ -337,9 +422,9 @@ const submitApplication = async () => {
 }
 
 .form-group input {
-  padding: 0.72rem 0.8rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 0.78rem 0.85rem;
+  border: 1px solid #cbdbe0;
+  border-radius: 8px;
   font-size: 0.95rem;
   background: #ffffff;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -347,8 +432,8 @@ const submitApplication = async () => {
 
 .form-group input:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: #1aa3b7;
+  box-shadow: 0 0 0 3px rgba(26, 163, 183, 0.14);
 }
 
 .existing-files {
@@ -381,18 +466,18 @@ const submitApplication = async () => {
   display: flex;
   align-items: center;
   gap: 1rem;
-  border: 1px dashed #94a3b8;
+  border: 1px dashed #6fb9c5;
   border-radius: 8px;
   padding: 1.25rem;
-  background: #f8fafc;
+  background: linear-gradient(135deg, #f3fbfc, #ffffff);
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s;
 }
 
 .upload-dropzone.dragging,
 .upload-dropzone:hover {
-  border-color: #2563eb;
-  background: #eff6ff;
+  border-color: #0e8799;
+  background: #eafcff;
 }
 
 .upload-dropzone input {
@@ -407,7 +492,7 @@ const submitApplication = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #2563eb;
+  background: linear-gradient(135deg, #0e8799, #0f766e);
   color: #ffffff;
   font-size: 1.4rem;
   font-weight: 600;
@@ -476,7 +561,7 @@ const submitApplication = async () => {
 .btn-submit {
   min-width: 150px;
   padding: 0.75rem 1rem;
-  background-color: #2563eb;
+  background: linear-gradient(135deg, #0e8799, #0f766e);
   color: white;
   border: none;
   font-size: 0.95rem;
@@ -484,7 +569,7 @@ const submitApplication = async () => {
 }
 
 .btn-submit:hover:not(:disabled) {
-  background-color: #1d4ed8;
+  background: linear-gradient(135deg, #087286, #0f6b62);
 }
 
 .btn-submit:disabled {
@@ -520,6 +605,15 @@ const submitApplication = async () => {
 }
 
 @media (max-width: 720px) {
+  .form-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .intake-aside {
+    position: static;
+    min-height: auto;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
   }

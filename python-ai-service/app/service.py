@@ -12,6 +12,7 @@ except ImportError:
     from langchain_core.documents import Document
 
 from app.documents import process_documents, split_text
+from app.config import settings
 from app.vector_store import rebuild_vector_store, vector_store
 
 
@@ -29,7 +30,7 @@ def _is_chroma_index_error(error: Exception) -> bool:
 
 
 def _uploads_dir() -> Path:
-    return Path(__file__).resolve().parent.parent / "java-backend" / "uploads"
+    return Path(settings.uploads_dir)
 
 
 def _now_iso() -> str:

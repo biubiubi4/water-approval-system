@@ -106,7 +106,7 @@ def api_add_knowledge(payload: KnowledgeTextIn) -> Dict[str, Any]:
 
 @app.post("/api/knowledge/upload")
 async def api_upload_knowledge(files: List[UploadFile] | None = File(default=None)) -> Dict[str, Any]:
-    saved_dir = settings.chroma_dir.parent / "uploads"
+    saved_dir = settings.uploads_dir
     saved_dir.mkdir(parents=True, exist_ok=True)
 
     saved_paths: List[Path] = []
@@ -183,7 +183,7 @@ def api_delete_knowledge_record(record_id: str) -> Dict[str, Any]:
 def api_delete_knowledge(payload: Dict[str, list]) -> Dict[str, Any]:
     names = payload.get("files") or []
     # 删除存储的文件（uploads 目录）
-    saved_dir = settings.chroma_dir.parent / "uploads"
+    saved_dir = settings.uploads_dir
     for name in names:
         try:
             p = saved_dir / name

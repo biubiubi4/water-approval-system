@@ -1,5 +1,6 @@
 <template>
   <div class="review-result">
+    <p class="section-kicker">Review Intelligence</p>
     <h2>初审结果</h2>
     <div v-if="application" class="result-content">
       <div class="application-info">
@@ -484,24 +485,43 @@ watch(() => props.application, () => {
 
 <style scoped>
 .review-result {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 1.25rem;
-  max-width: 800px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
+  padding: 1.35rem;
+  max-width: 980px;
   margin: 0 auto;
+  box-shadow: 0 22px 58px rgba(14, 47, 58, 0.1);
+  backdrop-filter: blur(12px);
 }
 
 .review-result h2 {
   margin-bottom: 1.5rem;
-  color: #111827;
-  font-size: 1.15rem;
+  color: #102633;
+  font-size: 1.45rem;
+}
+
+.section-kicker {
+  color: #10879a;
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.result-content {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.42fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
 }
 
 .application-info {
-  margin-bottom: 1.5rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0;
+  padding: 1rem;
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f7fbfc, #ffffff);
 }
 
 .application-info h3,
@@ -511,12 +531,13 @@ watch(() => props.application, () => {
 }
 
 .info-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
 .info-row .label {
-  width: 120px;
   font-weight: 600;
   color: #6b7280;
 }
@@ -526,8 +547,9 @@ watch(() => props.application, () => {
 }
 
 .status-value {
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  width: fit-content;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
   font-size: 0.875rem;
 }
 
@@ -620,8 +642,9 @@ watch(() => props.application, () => {
 .form-fields {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: #f9fafb;
-  border-radius: 6px;
+  background: linear-gradient(135deg, #f3fbfc, #ffffff);
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
 }
 
 .issue-list h4,
@@ -808,5 +831,63 @@ watch(() => props.application, () => {
 .no-application {
   color: #6b7280;
   padding: 0.75rem 0;
+}
+
+.result-summary {
+  background: linear-gradient(135deg, #f3fbfc, #ffffff);
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
+}
+
+.result-icon {
+  background: #eef8fa;
+  color: #0e8799;
+}
+
+.icon-approved {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.icon-rejected {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.icon-pending {
+  background: #eef8fa;
+  color: #0e8799;
+}
+
+.process-item,
+.dimension-item,
+.suggestions {
+  border: 1px solid #d9e6eb;
+  border-radius: 8px;
+  background: #fbfeff;
+}
+
+.issue-list,
+.attachment-trace,
+.compliance-dimensions,
+.rag-evidence,
+.form-fields {
+  border: 1px solid #e2ecef;
+  border-radius: 8px;
+}
+
+.btn-review {
+  padding: 0.75rem 1.25rem;
+  border: none;
+  background: linear-gradient(135deg, #0e8799, #0f766e);
+  color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 14px 30px rgba(14, 135, 153, 0.22);
+}
+
+@media (max-width: 860px) {
+  .result-content {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

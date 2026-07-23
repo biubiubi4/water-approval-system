@@ -30,7 +30,10 @@ class SentenceTransformerEmbeddings(Embeddings):
             return self.model
 
         try:
-            self.model = SentenceTransformer(self.model_name)
+            self.model = SentenceTransformer(
+                self.model_name,
+                cache_folder=str(settings.model_cache_dir),
+            )
         except Exception as error:
             print(f"加载本地嵌入模型失败，回退到哈希嵌入: {error}")
             self.model = HashEmbeddings()

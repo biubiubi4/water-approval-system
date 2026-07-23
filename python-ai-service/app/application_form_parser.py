@@ -70,6 +70,10 @@ def get_field_value(
     return ""
 
 
+def extract_field_value_from_text(text: str, labels: List[str]) -> str:
+    return _extract_field_value(text, labels)
+
+
 def _join_document_text(documents: List[Any]) -> str:
     parts: List[str] = []
     for document in documents:
